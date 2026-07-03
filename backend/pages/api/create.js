@@ -1,13 +1,6 @@
 import db from '../../lib/db'
 
-function normalizeRow(row) {
-  return {
-    ...row,
-    tags: row.tags ? row.tags.split(',').map((tag) => tag.trim()).filter(Boolean) : [],
-  }
-}
-
-export default function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST'])
     return res.status(405).end(`Method ${req.method} Not Allowed`)

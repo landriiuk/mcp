@@ -1,18 +1,5 @@
 import db from '../../lib/db'
 
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS words (
-    id TEXT PRIMARY KEY,
-    word TEXT NOT NULL,
-    meaning TEXT NOT NULL,
-    example TEXT,
-    status TEXT NOT NULL,
-    tags TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  )
-`).run()
-
 function normalizeRow(row) {
   return {
     ...row,
@@ -20,7 +7,7 @@ function normalizeRow(row) {
   }
 }
 
-export default function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method === 'GET') {
     const rows = await db.prepare('SELECT * FROM words ORDER BY created_at DESC').all()
     return res.status(200).json(rows.map(normalizeRow))

@@ -32,18 +32,19 @@ docker run -p 3000:3000 mcp-backend
 
 Notes on the database
 
-- This setup uses SQLite by default (`backend/db/words.db`). For robust production use consider migrating to PostgreSQL (Supabase) or another hosted DB.
-- If you keep SQLite, make sure the host provides persistent storage and mount the path where `backend/db/words.db` lives.
+- In production, this backend uses Postgres and requires `DATABASE_URL`.
+- Locally, a mockup mode is available when `DATABASE_URL` is not set. The backend then stores cards in `backend/db/words.db`.
+- The legacy SQLite file is only required for local development or one-time migrations.
 
 Environment variables
 
-- `DATABASE_URL` (optional) — if you migrate to Postgres.
+- `DATABASE_URL` — required in production, optional locally for mockup mode.
 - `PORT` — default 3000.
 
 Platforms
 
 - Render: supports Docker or a Node service with persistent disk — suitable for this repo.
-- Vercel: supports Next.js but is serverless; SQLite is not ideal there. Prefer migrating DB to Postgres if using Vercel.
+- Vercel: supports Next.js and requires a hosted database. Set `DATABASE_URL` in Vercel project settings.
 
 Render CI notes
 
@@ -71,7 +72,7 @@ DATABASE_URL="postgres://..." npm run migrate-sqlite
 	- Vercel will run `npm run build` in the `backend` folder as part of Next.js build.
 
 Notes:
-- After migration, the app will use Postgres (no SQLite file needed). API code supports both SQLite (local) and Postgres (when `DATABASE_URL` is present).
-- Make sure to remove or ignore `backend/db/words.db` from production builds if you switch to Postgres.
+- After migration, the app will use Postgres only. No SQLite file is needed at runtime.
+- Make sure to remove or ignore `backend/db/words.db` from production builds once migration is complete.
 
 *** End of file
