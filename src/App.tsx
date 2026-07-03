@@ -56,7 +56,7 @@ const emptyDraft: Draft = {
   status: "new",
   tags: "",
 };
-
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "/api";
 function App() {
   const [cards, setCards] = useState<Card[]>([]);
   const [query, setQuery] = useState("");
@@ -69,7 +69,7 @@ function App() {
   useEffect(() => {
     async function loadWords() {
       try {
-        const response = await fetch("/api/words");
+        const response = await fetch(`${apiBaseUrl}/words`);
         if (!response.ok) {
           throw new Error("Failed to load words from backend");
         }
@@ -161,7 +161,7 @@ function App() {
         current.map((card) => (card.id === editingId ? updatedCard : card)),
       );
     } else {
-      const response = await fetch("/api/words", {
+      const response = await fetch(`${apiBaseUrl}/create`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

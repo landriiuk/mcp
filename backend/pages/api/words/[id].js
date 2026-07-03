@@ -21,7 +21,7 @@ export default function handler(req, res) {
       return res.status(400).json({ error: 'Word and meaning are required.' })
     }
 
-    const existing = db.prepare('SELECT * FROM words WHERE id = ?').get(id)
+    const existing = await db.prepare('SELECT * FROM words WHERE id = ?').get(id)
     if (!existing) {
       return res.status(404).json({ error: 'Word not found.' })
     }
@@ -29,21 +29,21 @@ export default function handler(req, res) {
     const normalizedTags = Array.isArray(tags) ? tags.filter(Boolean).join(',') : ''
     const now = new Date().toISOString()
 
-    db.prepare(
+    await db.prepare(
       `UPDATE words SET word = ?, meaning = ?, example = ?, status = ?, tags = ?, updated_at = ? WHERE id = ?`,
     ).run(word.trim(), meaning.trim(), example.trim(), status, normalizedTags, now, id)
 
-    const updated = db.prepare('SELECT * FROM words WHERE id = ?').get(id)
+    const updated = await db.prepare('SELECT * FROM words WHERE id = ?').get(id)
     return res.status(200).json(normalizeRow(updated))
   }
 
   if (req.method === 'DELETE') {
-    const existing = db.prepare('SELECT id FROM words WHERE id = ?').get(id)
+    const existing = await db.prepare('SELECT id FROM words WHERE id = ?').get(id)
     if (!existing) {
       return res.status(404).json({ error: 'Word not found.' })
     }
 
-    db.prepare('DELETE FROM words WHERE id = ?').run(id)
+    await db.prepare('DELETE FROM words WHERE id = ?').run(id)
     return res.status(204).end()
   }
 

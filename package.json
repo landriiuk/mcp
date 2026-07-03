@@ -8,6 +8,8 @@
     "dev:frontend": "vite",
     "dev:backend": "npm --prefix backend run dev",
     "build": "vite build",
+    "build:frontend": "vite build",
+    "prepare-deploy": "npm run build:frontend && rm -rf backend/public && mkdir -p backend/public && cp -r dist/* backend/public/",
     "lint": "eslint .",
     "preview": "vite preview"
   },

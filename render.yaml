@@ -1,0 +1,11 @@
+services:
+  - type: web_service
+    name: mcp-backend
+    env: docker
+    repo: https://github.com/landriiuk/mcp
+    branch: main
+    dockerfilePath: backend/Dockerfile
+    buildCommand: npm run build
+    startCommand: npm start
+    plan: starter
+    disk: 1024

@@ -22,7 +22,7 @@ function normalizeRow(row) {
 
 export default function handler(req, res) {
   if (req.method === 'GET') {
-    const rows = db.prepare('SELECT * FROM words ORDER BY created_at DESC').all()
+    const rows = await db.prepare('SELECT * FROM words ORDER BY created_at DESC').all()
     return res.status(200).json(rows.map(normalizeRow))
   }
 
@@ -41,7 +41,7 @@ export default function handler(req, res) {
       `INSERT INTO words (id, word, meaning, example, status, tags, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    stmt.run(newId, word.trim(), meaning.trim(), example.trim(), status, normalizedTags, now, now)
+    await stmt.run(newId, word.trim(), meaning.trim(), example.trim(), status, normalizedTags, now, now)
 
     return res.status(201).json({
       id: newId,
