@@ -32,13 +32,14 @@ docker run -p 3000:3000 mcp-backend
 
 Notes on the database
 
-- In production, this backend uses Postgres and requires `DATABASE_URL`.
-- Locally, a mockup mode is available when `DATABASE_URL` is not set. The backend then stores cards in `backend/db/words.db`.
-- The legacy SQLite file is only required for local development or one-time migrations.
+- In production, this backend uses Postgres and requires `DATABASE_URL` (set `APP_ENV=production`).
+- Locally, a mockup mode is available when `APP_ENV=local` or `DATABASE_URL` is not set. The app uses an in-memory store (no native modules required).
+- The legacy SQLite file may still exist for migration scripts but is not required by local mock mode.
 
 Environment variables
 
-- `DATABASE_URL` — required in production, optional locally for mockup mode.
+- `APP_ENV` — set to `local` for local dev mock mode or `production` to require `DATABASE_URL`.
+- `DATABASE_URL` — required in production when `APP_ENV=production`.
 - `PORT` — default 3000.
 
 Platforms

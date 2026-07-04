@@ -1,6 +1,7 @@
 # MCP Next.js Backend
 
-This backend uses Supabase/Postgres in production and supports a local mockup with SQLite when `DATABASE_URL` is not set.
+
+This backend uses Supabase/Postgres in production and supports a local mockup (in-memory) when `APP_ENV=local` or `DATABASE_URL` is not set.
 
 ## Run
 
@@ -11,10 +12,10 @@ npm install
 npm run dev
 ```
 
-For production or hosted database use:
+For production or hosted database use set `APP_ENV=production` and provide `DATABASE_URL`:
 
 ```bash
-DATABASE_URL="postgres://..." npm run dev
+APP_ENV=production DATABASE_URL="postgres://..." npm run dev
 ```
 
 API endpoint:

@@ -1,10 +1,9 @@
 import process from 'process'
-import { join } from 'path'
 import { Pool } from 'pg'
-import Database from 'better-sqlite3'
 
 const DATABASE_URL = process.env.DATABASE_URL
-const isProduction = process.env.NODE_ENV === 'production'
+const APP_ENV = process.env.APP_ENV || process.env.NODE_ENV || 'development'
+const isProduction = APP_ENV === 'production'
 
 function convertPlaceholders(sql) {
   let i = 0
@@ -23,47 +22,110 @@ function isConnectionError(err) {
   )
 }
 
-function createSqliteDb() {
-  const sqlitePath = join(process.cwd(), 'db', 'words.db')
-  const sqlite = new Database(sqlitePath)
+// Lightweight in-memory fallback for local dev (no native modules)
+function createInMemoryDb() {
+  const store = new Map()
 
-  sqlite
-    .prepare(`
-      CREATE TABLE IF NOT EXISTS words (
-        id TEXT PRIMARY KEY,
-        word TEXT NOT NULL,
-        meaning TEXT NOT NULL,
-        example TEXT,
-        status TEXT NOT NULL,
-        tags TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      )
-    `)
-    .run()
+  function nowISO() {
+    return new Date().toISOString()
+  }
 
   return {
     prepare(sql) {
-      const statement = sqlite.prepare(sql)
+      const s = sql.trim().toUpperCase()
+
+      if (s.startsWith('SELECT * FROM WORDS ORDER BY')) {
+        return {
+          async all() {
+            return Array.from(store.values()).sort((a, b) => (b.created_at > a.created_at ? 1 : -1))
+          },
+        }
+      }
+
+      if (s.startsWith('SELECT * FROM WORDS WHERE ID =')) {
+        return {
+          async get(id) {
+            return store.get(id)
+          },
+        }
+      }
+
+      if (s.startsWith('INSERT INTO WORDS')) {
+        return {
+          async run(id, word, meaning, example, status, tags, created_at, updated_at) {
+            const row = {
+              id,
+              word,
+              meaning,
+              example,
+              status,
+              tags,
+              created_at: created_at || nowISO(),
+              updated_at: updated_at || nowISO(),
+            }
+            store.set(id, row)
+            return { lastInsertRowid: id }
+          },
+        }
+      }
+
+      if (s.startsWith('UPDATE WORDS SET')) {
+        return {
+          async run(word, meaning, example, status, tags, updated_at, id) {
+            const existing = store.get(id)
+            if (!existing) return { changes: 0 }
+            const updated = {
+              ...existing,
+              word,
+              meaning,
+              example,
+              status,
+              tags,
+              updated_at: updated_at || nowISO(),
+            }
+            store.set(id, updated)
+            return { changes: 1 }
+          },
+        }
+      }
+
+      if (s.startsWith('DELETE FROM WORDS WHERE ID =')) {
+        return {
+          async run(id) {
+            const existed = store.delete(id)
+            return { changes: existed ? 1 : 0 }
+          },
+        }
+      }
+
+      // Fallback: return no-op handlers
       return {
-        async run(...params) {
-          return statement.run(...params)
+        async run() {
+          return null
         },
-        async get(...params) {
-          return statement.get(...params)
+        async get() {
+          return null
         },
-        async all(...params) {
-          return statement.all(...params)
+        async all() {
+          return []
         },
       }
     },
   }
 }
 
-const localDb = createSqliteDb()
-let db = localDb
+let db
 
-if (DATABASE_URL) {
+const forceLocal = APP_ENV === 'local'
+const forceProduction = APP_ENV === 'production'
+
+if (forceLocal) {
+  db = createInMemoryDb()
+} else if (forceProduction && !DATABASE_URL) {
+  throw new Error('APP_ENV=production requires DATABASE_URL to be set')
+} else if (!DATABASE_URL) {
+  db = createInMemoryDb()
+} else {
   const pool = new Pool({
     connectionString: DATABASE_URL,
     ssl: {
@@ -97,14 +159,14 @@ if (DATABASE_URL) {
   db = {
     prepare(sql) {
       const converted = convertPlaceholders(sql)
-      const statement = {
+      return {
         async run(...params) {
           try {
             return await pool.query(converted, params)
           } catch (err) {
             if (!isProduction && isConnectionError(err)) {
               console.warn('Postgres unavailable, using local SQLite for this request.')
-              return localDb.prepare(sql).run(...params)
+              return createInMemoryDb().prepare(sql).run(...params)
             }
             throw err
           }
@@ -116,7 +178,7 @@ if (DATABASE_URL) {
           } catch (err) {
             if (!isProduction && isConnectionError(err)) {
               console.warn('Postgres unavailable, using local SQLite for this request.')
-              return localDb.prepare(sql).get(...params)
+              return createInMemoryDb().prepare(sql).get(...params)
             }
             throw err
           }
@@ -128,13 +190,12 @@ if (DATABASE_URL) {
           } catch (err) {
             if (!isProduction && isConnectionError(err)) {
               console.warn('Postgres unavailable, using local SQLite for this request.')
-              return localDb.prepare(sql).all(...params)
+              return createInMemoryDb().prepare(sql).all(...params)
             }
             throw err
           }
         },
       }
-      return statement
     },
   }
 }
