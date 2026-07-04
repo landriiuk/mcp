@@ -56,7 +56,7 @@ const emptyDraft: Draft = {
   status: "new",
   tags: "",
 };
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "/api";
+const apiBaseUrl = import.meta.env.VITE_API_URL || "/api";
 function App() {
   const [cards, setCards] = useState<Card[]>([]);
   const [query, setQuery] = useState("");
