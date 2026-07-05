@@ -44,22 +44,21 @@ export default async function handler(req, res) {
     : "";
 
   try {
-    await db.query(
-      `
+    const stmt = db.prepare(`
       INSERT INTO words
       (id, word, meaning, example, status, tags, created_at, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-      `,
-      [
-        newId,
-        word.trim(),
-        meaning.trim(),
-        example.trim(),
-        status,
-        normalizedTags,
-        now,
-        now,
-      ]
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    await stmt.run(
+      newId,
+      word.trim(),
+      meaning.trim(),
+      example.trim(),
+      status,
+      normalizedTags,
+      now,
+      now
     );
 
     return res.status(201).json({
@@ -74,6 +73,7 @@ export default async function handler(req, res) {
     });
   } catch (err) {
     console.error(err);
+
     return res.status(500).json({
       error: "Database error",
       details: err.message,
