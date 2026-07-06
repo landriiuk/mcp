@@ -9,10 +9,16 @@ import "./ImportWords.css";
 
 type ImportWordsProps = {
   onClose: () => void;
-  onImport: (rows: ImportWordRow[]) => Promise<{ imported: number; skipped: number; errors: string[] }>;
+  onImport: (rows: ImportWordRow[]) => Promise<{
+    imported: number;
+    skipped: number;
+    errors: string[];
+    targetFolder: string;
+  }>;
+  onImportSuccess: (targetFolder: string) => void;
 };
 
-export function ImportWords({ onClose, onImport }: ImportWordsProps) {
+export function ImportWords({ onClose, onImport, onImportSuccess }: ImportWordsProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [previewRows, setPreviewRows] = useState<ImportWordRow[]>([]);
@@ -20,11 +26,13 @@ export function ImportWords({ onClose, onImport }: ImportWordsProps) {
   const [importError, setImportError] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [result, setResult] = useState<{ imported: number; skipped: number } | null>(null);
+  const [showAllPreview, setShowAllPreview] = useState(false);
 
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     setResult(null);
     setImportError(null);
+    setShowAllPreview(false);
 
     if (!file) {
       setFileName(null);
@@ -55,6 +63,12 @@ export function ImportWords({ onClose, onImport }: ImportWordsProps) {
 
     try {
       const response = await onImport(previewRows);
+
+      if (response.imported > 0) {
+        onImportSuccess(response.targetFolder);
+        return;
+      }
+
       setResult({ imported: response.imported, skipped: response.skipped });
 
       if (response.errors.length > 0) {
@@ -68,6 +82,10 @@ export function ImportWords({ onClose, onImport }: ImportWordsProps) {
   }
 
   const previewLimit = 5;
+  const hiddenRowCount = previewRows.length - previewLimit;
+  const visiblePreviewRows = showAllPreview
+    ? previewRows
+    : previewRows.slice(0, previewLimit);
 
   return (
     <div className="importWords">
@@ -134,7 +152,7 @@ export function ImportWords({ onClose, onImport }: ImportWordsProps) {
                 </tr>
               </thead>
               <tbody>
-                {previewRows.slice(0, previewLimit).map((row, index) => (
+                {visiblePreviewRows.map((row, index) => (
                   <tr key={`${row.word}-${index}`}>
                     <td>{row.word}</td>
                     <td>{row.meaning}</td>
@@ -147,11 +165,16 @@ export function ImportWords({ onClose, onImport }: ImportWordsProps) {
               </tbody>
             </table>
           </div>
-          {previewRows.length > previewLimit ? (
-            <p className="importPreviewMore">
-              + {previewRows.length - previewLimit} more row
-              {previewRows.length - previewLimit === 1 ? "" : "s"}
-            </p>
+          {hiddenRowCount > 0 ? (
+            <button
+              className="importPreviewMore"
+              onClick={() => setShowAllPreview((expanded) => !expanded)}
+              type="button"
+            >
+              {showAllPreview
+                ? "Show fewer rows"
+                : `+ ${hiddenRowCount} more row${hiddenRowCount === 1 ? "" : "s"}`}
+            </button>
           ) : null}
         </div>
       ) : null}

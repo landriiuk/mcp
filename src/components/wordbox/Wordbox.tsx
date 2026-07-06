@@ -11,15 +11,44 @@ interface WordboxCard {
   folder: string;
 }
 
+type CardFilter = "all" | "learning" | "known";
+
+type Section = {
+  value: CardFilter;
+  label: string;
+};
+
+type SectionCounts = {
+  all: number;
+  learning: number;
+  known: number;
+};
+
 interface WordboxProps {
   cards: WordboxCard[];
   query: string;
   onQueryChange: (value: string) => void;
   onOpenNewCardForm: () => void;
   onOpenImport: () => void;
+  filter: CardFilter;
+  sectionCounts: SectionCounts;
+  sections: readonly Section[];
+  onFilterChange: (value: CardFilter) => void;
+  onDeleteCard: (cardId: string) => void;
 }
 
-export function Wordbox({ cards, query, onQueryChange, onOpenNewCardForm, onOpenImport }: WordboxProps) {
+export function Wordbox({
+  cards,
+  query,
+  onQueryChange,
+  onOpenNewCardForm,
+  onOpenImport,
+  filter,
+  sectionCounts,
+  sections,
+  onFilterChange,
+  onDeleteCard,
+}: WordboxProps) {
   const newCount = cards.filter((card) => card.status === "new").length;
 
   return (
@@ -43,6 +72,20 @@ export function Wordbox({ cards, query, onQueryChange, onOpenNewCardForm, onOpen
           </button>
         </div>
       </div>
+
+      <nav className="contentSections" aria-label="Card sections">
+        {sections.map(({ value, label }) => (
+          <button
+            className={filter === value ? "active" : ""}
+            key={value}
+            onClick={() => onFilterChange(value)}
+            type="button"
+          >
+            <span>{label}</span>
+            <strong>{sectionCounts[value]}</strong>
+          </button>
+        ))}
+      </nav>
 
       <section className="toolbar" aria-label="Search and filters">
         <label className="search">
@@ -77,6 +120,13 @@ export function Wordbox({ cards, query, onQueryChange, onOpenNewCardForm, onOpen
                     {tag}
                   </span>
                 ))}
+                <button
+                  className="chip danger"
+                  onClick={() => onDeleteCard(word.id)}
+                  type="button"
+                >
+                  delete
+                </button>
               </div>
             }
           >

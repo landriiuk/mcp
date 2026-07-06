@@ -50,65 +50,63 @@
   gap: 10px;
 }
 
-.folderPanelHeader {
+.folderAllRow {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 2px;
+  gap: 8px;
 }
 
-.sectionLabel {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.folderAllButton {
+  flex: 1;
 }
 
-.folderHint {
-  font-size: 11px;
-  color: var(--folder-hint);
-  font-weight: 700;
-}
-
-.folderForm {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 6px;
-  margin-bottom: 4px;
-}
-
-.folderInput {
-  min-height: 36px;
-  padding: 0 10px;
+.folderAddButton {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 8px;
   border: 1px solid var(--line);
-  border-radius: 8px;
   background: var(--white);
+  color: var(--muted);
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1;
+  display: grid;
+  place-items: center;
 }
 
-.folderActionButton {
-  min-height: 36px;
-  padding: 0 10px;
-  border-radius: 8px;
-  background: var(--ink);
-  color: var(--white);
-  font-weight: 700;
-}
-
-.folderActionButton.ghost {
-  background: var(--ghost-bg);
+.folderAddButton:hover:not(:disabled) {
   color: var(--ink);
+  border-color: var(--ink);
+}
+
+.folderAddButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .folderError {
   margin: 0;
   color: var(--red);
   font-size: 12px;
+  line-height: 1.4;
 }
 
 .folderList {
   display: grid;
   gap: 6px;
+}
+
+.folderRowGroup {
+  display: grid;
+  gap: 4px;
+}
+
+.folderInlineError {
+  margin: 0 8px;
+  color: var(--red);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .folderRow {
@@ -124,6 +122,36 @@
   border: 1px solid var(--line);
 }
 
+.folderRow.editing,
+.folderRow.creating {
+  background: var(--white);
+  border: 1px solid var(--line);
+  padding: 2px 6px;
+}
+
+.folderInlineInput {
+  flex: 1;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--white);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.folderCountBadge {
+  min-width: 26px;
+  padding: 4px 6px;
+  border-radius: 999px;
+  background: var(--count-bg);
+  color: var(--chip-text);
+  font-size: 12px;
+  text-align: center;
+}
+
 .folderButton {
   flex: 1;
   min-height: 38px;
@@ -136,13 +164,6 @@
   justify-content: space-between;
   border: 1px solid transparent;
   text-align: left;
-}
-
-.folderButton::before {
-  content: "•";
-  margin-right: 8px;
-  color: var(--folder-dot);
-  font-size: 14px;
 }
 
 .folderButton strong {
@@ -160,10 +181,6 @@
   color: var(--ink);
   font-weight: 700;
   border-color: transparent;
-}
-
-.folderButton.active::before {
-  color: var(--green);
 }
 
 .folderInlineActions {
@@ -531,10 +548,6 @@ select:focus-visible {
     border-bottom: 1px solid var(--line);
   }
 
-  .nav {
-    grid-template-columns: repeat(3, 1fr);
-  }
-
   .cardsGrid {
     grid-template-columns: 1fr;
   }
@@ -555,8 +568,7 @@ select:focus-visible {
     align-items: stretch;
   }
 
-  .formRow,
-  .nav {
+  .formRow {
     grid-template-columns: 1fr;
   }
 }

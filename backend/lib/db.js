@@ -188,6 +188,35 @@ function createInMemoryDb() {
 }
 
 let db
+let sharedInMemoryDb = null
+let postgresDisabled = false
+
+function getSharedInMemoryDb() {
+  if (!sharedInMemoryDb) {
+    sharedInMemoryDb = createInMemoryDb()
+    console.warn('Using shared in-memory database.')
+  }
+  return sharedInMemoryDb
+}
+
+function disablePostgres(err) {
+  if (!isProduction && isConnectionError(err)) {
+    if (!postgresDisabled) {
+      postgresDisabled = true
+      console.warn('Postgres unavailable; switching to shared in-memory database for this process.')
+    }
+    return true
+  }
+  return false
+}
+
+function runWithFallback(sql, operation, params) {
+  if (postgresDisabled) {
+    return getSharedInMemoryDb().prepare(sql)[operation](...params)
+  }
+
+  return null
+}
 
 const forceLocal = APP_ENV === 'local'
 const forceProduction = APP_ENV === 'production'
@@ -234,11 +263,15 @@ if (forceLocal) {
   }
 
   ensurePostgresSchema().catch((err) => {
-    console.error('Failed to initialize Postgres schema:', err)
+    if (disablePostgres(err)) {
+      console.warn('Postgres unavailable in development; using shared in-memory database.')
+      return
+    }
+
+    console.error('Failed to initialize Postgres schema:', err.message || err)
     if (isProduction) {
       throw err
     }
-    console.warn('Falling back to local SQLite because Postgres is unavailable in development.')
   })
 
   db = {
@@ -246,36 +279,48 @@ if (forceLocal) {
       const converted = convertPlaceholders(sql)
       return {
         async run(...params) {
+          const fallbackResult = runWithFallback(sql, 'run', params)
+          if (fallbackResult) {
+            return fallbackResult
+          }
+
           try {
             return await pool.query(converted, params)
           } catch (err) {
-            if (!isProduction && isConnectionError(err)) {
-              console.warn('Postgres unavailable, using local SQLite for this request.')
-              return createInMemoryDb().prepare(sql).run(...params)
+            if (disablePostgres(err)) {
+              return getSharedInMemoryDb().prepare(sql).run(...params)
             }
             throw err
           }
         },
         async get(...params) {
+          const fallbackResult = runWithFallback(sql, 'get', params)
+          if (fallbackResult) {
+            return fallbackResult
+          }
+
           try {
             const res = await pool.query(converted, params)
             return res.rows[0]
           } catch (err) {
-            if (!isProduction && isConnectionError(err)) {
-              console.warn('Postgres unavailable, using local SQLite for this request.')
-              return createInMemoryDb().prepare(sql).get(...params)
+            if (disablePostgres(err)) {
+              return getSharedInMemoryDb().prepare(sql).get(...params)
             }
             throw err
           }
         },
         async all(...params) {
+          const fallbackResult = runWithFallback(sql, 'all', params)
+          if (fallbackResult) {
+            return fallbackResult
+          }
+
           try {
             const res = await pool.query(converted, params)
             return res.rows
           } catch (err) {
-            if (!isProduction && isConnectionError(err)) {
-              console.warn('Postgres unavailable, using local SQLite for this request.')
-              return createInMemoryDb().prepare(sql).all(...params)
+            if (disablePostgres(err)) {
+              return getSharedInMemoryDb().prepare(sql).all(...params)
             }
             throw err
           }

@@ -153,6 +153,20 @@ export function parseWordsTable(content: string): ParsedImportResult {
   return { rows, errors };
 }
 
+export function getImportTargetFolder(rows: ImportWordRow[]): string {
+  if (rows.length === 0) {
+    return "General";
+  }
+
+  const folderCounts = rows.reduce<Record<string, number>>((accumulator, row) => {
+    const folder = row.folder.trim() || "General";
+    accumulator[folder] = (accumulator[folder] ?? 0) + 1;
+    return accumulator;
+  }, {});
+
+  return Object.entries(folderCounts).sort((left, right) => right[1] - left[1])[0][0];
+}
+
 export function downloadImportTemplate() {
   const blob = new Blob([IMPORT_TEMPLATE], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);

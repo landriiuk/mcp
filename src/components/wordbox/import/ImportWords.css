@@ -132,8 +132,19 @@
 
 .importPreviewMore {
   margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
   color: var(--muted);
   font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.importPreviewMore:hover {
+  color: var(--ink);
+  text-decoration: underline;
 }
 
 .importFooter {

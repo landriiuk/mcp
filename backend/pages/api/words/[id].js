@@ -52,7 +52,7 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'DELETE') {
-    const existing = await db.prepare('SELECT id FROM words WHERE id = ?').get(id)
+    const existing = await db.prepare('SELECT * FROM words WHERE id = ?').get(id)
     if (!existing) {
       return res.status(404).json({ error: 'Word not found.' })
     }

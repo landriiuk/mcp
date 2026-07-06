@@ -4,6 +4,20 @@ function normalizeFolderName(value) {
   return (value || "").trim().replace(/\s+/g, " ");
 }
 
+const FOLDER_NAME_MAX_LENGTH = 50;
+
+function validateFolderName(name) {
+  if (!name) {
+    return "Folder name is required.";
+  }
+
+  if (name.length > FOLDER_NAME_MAX_LENGTH) {
+    return `Folder name must be ${FOLDER_NAME_MAX_LENGTH} characters or fewer.`;
+  }
+
+  return null;
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
@@ -20,9 +34,10 @@ export default async function handler(req, res) {
 
   if (req.method === "POST") {
     const name = normalizeFolderName(req.body?.name);
+    const validationError = validateFolderName(name);
 
-    if (!name) {
-      return res.status(400).json({ error: "Folder name is required." });
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
     }
 
     const existing = await db.prepare("SELECT name FROM folders WHERE name = ?").get(name);
@@ -37,9 +52,10 @@ export default async function handler(req, res) {
   if (req.method === "PUT") {
     const oldName = normalizeFolderName(req.body?.oldName);
     const newName = normalizeFolderName(req.body?.newName);
+    const validationError = validateFolderName(newName);
 
-    if (!oldName || !newName) {
-      return res.status(400).json({ error: "Folder names are required." });
+    if (!oldName || validationError) {
+      return res.status(400).json({ error: validationError || "Folder names are required." });
     }
 
     const existing = await db.prepare("SELECT name FROM folders WHERE name = ?").get(newName);

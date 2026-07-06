@@ -41,6 +41,78 @@
   flex-wrap: wrap;
 }
 
+.contentSections {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 20px;
+  padding-bottom: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.contentSections button {
+  position: relative;
+  min-height: 44px;
+  padding: 0 4px 12px;
+  margin: 0 16px 0 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--muted);
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  transition: color 160ms ease;
+}
+
+.contentSections button::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: transparent;
+  transition: background-color 160ms ease;
+}
+
+.contentSections button:hover {
+  color: var(--ink);
+}
+
+.contentSections button strong {
+  min-width: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--pill-subtle-bg);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.contentSections button:hover strong {
+  color: var(--chip-text);
+}
+
+.contentSections button.active {
+  color: var(--green);
+  background: transparent;
+  font-weight: 700;
+}
+
+.contentSections button.active::after {
+  background: var(--green);
+}
+
+.contentSections button.active strong {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
 .pill {
   display: inline-flex;
   align-items: center;
@@ -158,6 +230,19 @@
   font-weight: 800;
 }
 
+.chip.danger {
+  margin-left: auto;
+  color: var(--red);
+  background: var(--chip-bg);
+  border: 0;
+  cursor: pointer;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.chip.danger:hover {
+  background: var(--danger-soft);
+}
+
 .status {
   text-transform: lowercase;
 }
@@ -208,6 +293,21 @@
   .contentHeader {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .contentSections {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .contentSections::-webkit-scrollbar {
+    display: none;
+  }
+
+  .contentSections button {
+    flex: 0 0 auto;
+    margin-right: 12px;
   }
 }
 

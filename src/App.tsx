@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import { Wordbox } from "./components/wordbox/Wordbox";
 import { CardEditor } from './components/wordbox/add-card/CardEditor';
 import { ImportWords } from "./components/wordbox/import/ImportWords";
-import type { ImportWordRow } from "./utils/importWords";
+import { getImportTargetFolder, type ImportWordRow } from "./utils/importWords";
 
 type CardStatus = "new" | "learning" | "known";
 
@@ -65,6 +65,9 @@ const emptyDraft: Draft = {
   folder: "General",
 };
 const apiBaseUrl = import.meta.env.VITE_API_URL || "/api";
+const FOLDER_NAME_MAX_LENGTH = 50;
+const FOLDER_NAME_TOO_LONG_ERROR = `Folder name must be ${FOLDER_NAME_MAX_LENGTH} characters or fewer.`;
+
 function App() {
   const [cards, setCards] = useState<Card[]>([]);
   const [query, setQuery] = useState("");
@@ -73,7 +76,9 @@ function App() {
   const [activeFolder, setActiveFolder] = useState<string>("all");
   const [folderDraft, setFolderDraft] = useState("");
   const [editingFolder, setEditingFolder] = useState<string | null>(null);
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [folderError, setFolderError] = useState<string | null>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -139,13 +144,50 @@ function App() {
     [cards],
   );
 
-  const folderCounts = useMemo(() => {
-    return cards.reduce<Record<string, number>>((accumulator, card) => {
+  const folderStatusCounts = useMemo(() => {
+    return cards.reduce<
+      Record<string, { all: number; new: number; learning: number; known: number }>
+    >((accumulator, card) => {
       const folderName = card.folder || "General";
-      accumulator[folderName] = (accumulator[folderName] ?? 0) + 1;
+
+      if (!accumulator[folderName]) {
+        accumulator[folderName] = { all: 0, new: 0, learning: 0, known: 0 };
+      }
+
+      accumulator[folderName].all += 1;
+      accumulator[folderName][card.status] += 1;
       return accumulator;
     }, {});
   }, [cards]);
+
+  function getFolderSectionCounts(folder: string) {
+    if (folder === "all") {
+      return {
+        all: counts.all,
+        learning: counts.learning,
+        known: counts.known,
+      };
+    }
+
+    const folderCounts = folderStatusCounts[folder] ?? { all: 0, new: 0, learning: 0, known: 0 };
+
+    return {
+      all: folderCounts.all,
+      learning: folderCounts.learning,
+      known: folderCounts.known,
+    };
+  }
+
+  const folderSections = [
+    { value: "all", label: "Cards" },
+    { value: "learning", label: "Review" },
+    { value: "known", label: "Known" },
+  ] as const;
+
+  function selectFolder(folder: string) {
+    setActiveFolder(folder);
+    setFilter("all");
+  }
 
   useEffect(() => {
     setFolders((currentFolders) => {
@@ -161,57 +203,137 @@ function App() {
     return value.trim().replace(/\s+/g, " ");
   }
 
-  function resetFolderEditor() {
+  function validateFolderName(value: string) {
+    const normalizedName = normalizeFolderName(value);
+
+    if (!normalizedName) {
+      return "Folder name is required.";
+    }
+
+    if (normalizedName.length > FOLDER_NAME_MAX_LENGTH) {
+      return FOLDER_NAME_TOO_LONG_ERROR;
+    }
+
+    return null;
+  }
+
+  function cancelFolderEditing() {
     setEditingFolder(null);
+    setIsCreatingFolder(false);
     setFolderDraft("");
     setFolderError(null);
   }
 
-  async function handleFolderSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function startCreatingFolder() {
+    setEditingFolder(null);
+    setIsCreatingFolder(true);
+    setFolderDraft("");
+    setFolderError(null);
+  }
 
-    const normalizedName = normalizeFolderName(folderDraft);
+  function startEditingFolder(folder: string) {
+    setIsCreatingFolder(false);
+    setEditingFolder(folder);
+    setFolderDraft(folder);
+    setFolderError(null);
+  }
 
-    if (!normalizedName) {
-      setFolderError("Folder name is required.");
+  useEffect(() => {
+    if ((isCreatingFolder || editingFolder) && folderInputRef.current) {
+      folderInputRef.current.focus();
+      folderInputRef.current.select();
+    }
+  }, [isCreatingFolder, editingFolder]);
+
+  function handleFolderDraftChange(rawValue: string) {
+    if (rawValue.length > FOLDER_NAME_MAX_LENGTH) {
+      setFolderDraft(rawValue.slice(0, FOLDER_NAME_MAX_LENGTH));
+      setFolderError(FOLDER_NAME_TOO_LONG_ERROR);
       return;
     }
 
-    if (editingFolder) {
-      const existingFolder = folders.find(
-        (folder) => folder.toLowerCase() === normalizedName.toLowerCase() && folder !== editingFolder,
-      );
+    setFolderDraft(rawValue);
+    setFolderError(null);
+  }
 
-      if (existingFolder) {
-        setFolderError("Folder already exists.");
-        return;
-      }
+  function handleFolderPaste(event: React.ClipboardEvent<HTMLInputElement>) {
+    const pastedText = event.clipboardData.getData("text");
+    if (!pastedText) {
+      return;
+    }
 
-      try {
-        const response = await fetch(`${apiBaseUrl}/folders`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ oldName: editingFolder, newName: normalizedName }),
-        });
+    const input = event.currentTarget;
+    const start = input.selectionStart ?? folderDraft.length;
+    const end = input.selectionEnd ?? folderDraft.length;
+    const nextValue = `${folderDraft.slice(0, start)}${pastedText}${folderDraft.slice(end)}`;
 
-        if (!response.ok) {
-          throw new Error("Failed to rename folder");
-        }
+    if (nextValue.length > FOLDER_NAME_MAX_LENGTH) {
+      setFolderError(FOLDER_NAME_TOO_LONG_ERROR);
+    }
+  }
 
-        setFolders((currentFolders) =>
-          currentFolders.map((folder) => (folder === editingFolder ? normalizedName : folder)).sort(),
-        );
-        setCards((currentCards) =>
-          currentCards.map((card) => (card.folder === editingFolder ? { ...card, folder: normalizedName } : card)),
-        );
+  function showFolderLimitErrorIfNeeded(event: React.KeyboardEvent<HTMLInputElement>) {
+    const allowedKeys = new Set([
+      "Backspace",
+      "Delete",
+      "ArrowLeft",
+      "ArrowRight",
+      "ArrowUp",
+      "ArrowDown",
+      "Home",
+      "End",
+      "Tab",
+      "Enter",
+      "Escape",
+    ]);
 
-        if (activeFolder === editingFolder) {
-          setActiveFolder(normalizedName);
-        }
-      } catch (error) {
-        setFolderError("Could not rename folder.");
-      }
-    } else {
+    if (allowedKeys.has(event.key) || event.ctrlKey || event.metaKey || event.altKey) {
+      return;
+    }
+
+    if (event.key.length !== 1) {
+      return;
+    }
+
+    const input = event.currentTarget;
+    const start = input.selectionStart ?? folderDraft.length;
+    const end = input.selectionEnd ?? folderDraft.length;
+    const hasSelection = start !== end;
+    const nextLength = hasSelection
+      ? folderDraft.length - (end - start) + 1
+      : folderDraft.length + 1;
+
+    if (nextLength > FOLDER_NAME_MAX_LENGTH) {
+      setFolderError(FOLDER_NAME_TOO_LONG_ERROR);
+    }
+  }
+
+  function handleFolderInputKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void submitFolderDraft();
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      cancelFolderEditing();
+      return;
+    }
+
+    showFolderLimitErrorIfNeeded(event);
+  }
+
+  async function submitFolderDraft() {
+    const validationError = validateFolderName(folderDraft);
+    if (validationError) {
+      setFolderError(validationError);
+      return;
+    }
+
+    const normalizedName = normalizeFolderName(folderDraft);
+
+    if (isCreatingFolder) {
       const existingFolder = folders.find(
         (folder) => folder.toLowerCase() === normalizedName.toLowerCase(),
       );
@@ -229,23 +351,69 @@ function App() {
         });
 
         if (!response.ok) {
-          throw new Error("Failed to create folder");
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || "Failed to create folder");
         }
 
         setFolders((currentFolders) => [...currentFolders, normalizedName].sort());
         setActiveFolder(normalizedName);
+        setFilter("all");
+        cancelFolderEditing();
       } catch (error) {
-        setFolderError("Could not create folder.");
+        setFolderError(error instanceof Error ? error.message : "Could not create folder.");
       }
+      return;
     }
 
-    resetFolderEditor();
+    if (!editingFolder) {
+      return;
+    }
+
+    if (normalizedName === editingFolder) {
+      cancelFolderEditing();
+      return;
+    }
+
+    const existingFolder = folders.find(
+      (folder) => folder.toLowerCase() === normalizedName.toLowerCase() && folder !== editingFolder,
+    );
+
+    if (existingFolder) {
+      setFolderError("Folder already exists.");
+      return;
+    }
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/folders`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oldName: editingFolder, newName: normalizedName }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to rename folder");
+      }
+
+      setFolders((currentFolders) =>
+        currentFolders.map((folder) => (folder === editingFolder ? normalizedName : folder)).sort(),
+      );
+      setCards((currentCards) =>
+        currentCards.map((card) => (card.folder === editingFolder ? { ...card, folder: normalizedName } : card)),
+      );
+
+      if (activeFolder === editingFolder) {
+        setActiveFolder(normalizedName);
+      }
+
+      cancelFolderEditing();
+    } catch (error) {
+      setFolderError(error instanceof Error ? error.message : "Could not rename folder.");
+    }
   }
 
-  function startEditingFolder(folder: string) {
-    setEditingFolder(folder);
-    setFolderDraft(folder);
-    setFolderError(null);
+  function handleFolderInputBlur() {
+    cancelFolderEditing();
   }
 
   async function deleteFolder(folder: string) {
@@ -277,7 +445,7 @@ function App() {
       setFolderError("Could not delete folder.");
     }
 
-    resetFolderEditor();
+    cancelFolderEditing();
   }
 
   function resetForm() {
@@ -296,6 +464,12 @@ function App() {
 
   function closeImportModal() {
     setIsImportOpen(false);
+  }
+
+  function handleImportSuccess(targetFolder: string) {
+    setActiveFolder(targetFolder);
+    setFilter("all");
+    closeImportModal();
   }
 
   async function handleImportWords(rows: ImportWordRow[]) {
@@ -344,6 +518,7 @@ function App() {
         (entry: { row?: number; error?: string }) =>
           entry.row ? `Row ${entry.row}: ${entry.error}` : entry.error || "Import error",
       ),
+      targetFolder: getImportTargetFolder(rows),
     };
   }
 
@@ -368,7 +543,7 @@ function App() {
     };
 
     if (editingId) {
-      const response = await fetch(`/api/words/${editingId}`, {
+      const response = await fetch(`${apiBaseUrl}/words/${editingId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -401,7 +576,7 @@ function App() {
   }
 
   async function deleteCard(cardId) {
-    const response = await fetch(`/api/words/${cardId}`, {
+    const response = await fetch(`${apiBaseUrl}/words/${cardId}`, {
       method: "DELETE",
     });
 
@@ -421,7 +596,7 @@ function App() {
       return;
     }
 
-    const response = await fetch(`/api/words/${cardId}`, {
+    const response = await fetch(`${apiBaseUrl}/words/${cardId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -448,99 +623,132 @@ function App() {
           <span>Wordly</span>
         </a>
 
-        <nav className="nav" aria-label="Card sections">
-          {[
-            { value: "all", label: "Cards", count: counts.all },
-            { value: "learning", label: "Review", count: counts.learning },
-            { value: "known", label: "Known", count: counts.known },
-          ].map(({ value, label, count }) => (
-            <button
-              className={filter === value ? "active" : ""}
-              key={value}
-              onClick={() => setFilter(value as CardStatus | "all")}
-              type="button"
-            >
-              <span>{label}</span>
-              <strong>{count}</strong>
-            </button>
-          ))}
-        </nav>
-
         <div className="folderPanel">
-          <div className="folderPanelHeader">
-            <p className="sectionLabel">Folders</p>
-            <span className="folderHint">CRUD</span>
-          </div>
-
-          <form className="folderForm" onSubmit={handleFolderSubmit}>
-            <input
-              className="folderInput"
-              onChange={(event) => {
-                setFolderDraft(event.target.value);
-                setFolderError(null);
-              }}
-              placeholder={editingFolder ? "Rename folder" : "New folder"}
-              type="text"
-              value={folderDraft}
-            />
-            <button className="folderActionButton" type="submit">
-              {editingFolder ? "Save" : "Add"}
-            </button>
-            {editingFolder ? (
-              <button className="folderActionButton ghost" onClick={resetFolderEditor} type="button">
-                Cancel
-              </button>
-            ) : null}
-          </form>
-
-          {folderError ? <p className="folderError">{folderError}</p> : null}
-
-          <div className="folderList">
+          <div className="folderAllRow">
             <button
-              className={activeFolder === "all" ? "folderButton active" : "folderButton"}
-              onClick={() => setActiveFolder("all")}
+              className={activeFolder === "all" ? "folderButton folderAllButton active" : "folderButton folderAllButton"}
+              onClick={() => selectFolder("all")}
               type="button"
             >
               <span>All</span>
-              <strong>{counts.all}</strong>
+              <strong>{getFolderSectionCounts("all").all}</strong>
             </button>
-            {folders.map((folder) => (
-              <div className={activeFolder === folder ? "folderRow active" : "folderRow"} key={folder}>
-                <button
-                  className="folderButton"
-                  onClick={() => setActiveFolder(folder)}
-                  type="button"
-                >
-                  <span>{folder}</span>
-                  <strong>{folderCounts[folder] ?? 0}</strong>
-                </button>
-                <div className="folderInlineActions">
-                  <button
-                    className="folderInlineButton"
-                    onClick={() => startEditingFolder(folder)}
-                    type="button"
-                    title={`Rename ${folder}`}
-                    aria-label={`Rename ${folder}`}
+            <button
+              className="folderAddButton"
+              disabled={isCreatingFolder}
+              onClick={startCreatingFolder}
+              type="button"
+              title="Create folder"
+              aria-label="Create folder"
+            >
+              +
+            </button>
+          </div>
+
+          <div className="folderList">
+            {folders.map((folder) => {
+              const folderCount = getFolderSectionCounts(folder).all;
+              const isActiveFolder = activeFolder === folder;
+              const isEditing = editingFolder === folder;
+
+              return (
+                <div className="folderRowGroup" key={folder}>
+                  <div
+                    className={`folderRow${isActiveFolder ? " active" : ""}${isEditing ? " editing" : ""}`}
                   >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M4 17.5V20h2.5l7.4-7.4-2.5-2.5L4 17.5Zm13.7-8.3a.8.8 0 0 0 0-1.2l-1.3-1.3a.8.8 0 0 0-1.2 0l-1.6 1.6 2.5 2.5 1.6-1.6Z" />
-                    </svg>
-                  </button>
-                  <button
-                    className="folderInlineButton"
-                    disabled={folder === "General"}
-                    onClick={() => deleteFolder(folder)}
-                    type="button"
-                    title={`Delete ${folder}`}
-                    aria-label={`Delete ${folder}`}
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M8 6V4h8v2h4v2H4V6h4Zm2 4h2v8H10v-8Zm4 0h2v8h-2v-8Z" />
-                    </svg>
-                  </button>
+                    {isEditing ? (
+                      <input
+                        ref={folderInputRef}
+                        aria-label={`Rename ${folder}`}
+                        aria-invalid={folderError ? true : undefined}
+                        className="folderInlineInput"
+                        onChange={(event) => handleFolderDraftChange(event.target.value)}
+                        onKeyDown={handleFolderInputKeyDown}
+                        onBlur={handleFolderInputBlur}
+                        onPaste={handleFolderPaste}
+                        type="text"
+                        value={folderDraft}
+                      />
+                    ) : (
+                      <button
+                        className="folderButton"
+                        onClick={() => selectFolder(folder)}
+                        type="button"
+                      >
+                        <span>{folder}</span>
+                        <strong>{folderCount}</strong>
+                      </button>
+                    )}
+                    {isEditing ? (
+                      <strong className="folderCountBadge">{folderCount}</strong>
+                    ) : (
+                      <div className="folderInlineActions">
+                        <button
+                          className="folderInlineButton"
+                          onClick={() => startEditingFolder(folder)}
+                          type="button"
+                          title={`Rename ${folder}`}
+                          aria-label={`Rename ${folder}`}
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 17.5V20h2.5l7.4-7.4-2.5-2.5L4 17.5Zm13.7-8.3a.8.8 0 0 0 0-1.2l-1.3-1.3a.8.8 0 0 0-1.2 0l-1.6 1.6 2.5 2.5 1.6-1.6Z" />
+                          </svg>
+                        </button>
+                        <button
+                          className="folderInlineButton"
+                          disabled={folder === "General"}
+                          onClick={() => deleteFolder(folder)}
+                          type="button"
+                          title={`Delete ${folder}`}
+                          aria-label={`Delete ${folder}`}
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M8 6V4h8v2h4v2H4V6h4Zm2 4h2v8H10v-8Zm4 0h2v8h-2v-8Z" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {isEditing && folderError ? (
+                    <p className="folderInlineError" role="alert">
+                      {folderError}
+                    </p>
+                  ) : null}
                 </div>
+              );
+            })}
+
+            {isCreatingFolder ? (
+              <div className="folderRowGroup">
+                <div className="folderRow creating">
+                  <input
+                    ref={folderInputRef}
+                    aria-label="New folder name"
+                    aria-invalid={folderError ? true : undefined}
+                    className="folderInlineInput"
+                    onChange={(event) => handleFolderDraftChange(event.target.value)}
+                    onKeyDown={handleFolderInputKeyDown}
+                    onBlur={handleFolderInputBlur}
+                    onPaste={handleFolderPaste}
+                    placeholder="Folder name"
+                    type="text"
+                    value={folderDraft}
+                  />
+                  <strong className="folderCountBadge">0</strong>
+                </div>
+                {folderError ? (
+                  <p className="folderInlineError" role="alert">
+                    {folderError}
+                  </p>
+                ) : null}
               </div>
-            ))}
+            ) : null}
+
+            {folderError && !isCreatingFolder && !editingFolder ? (
+              <p className="folderInlineError" role="alert">
+                {folderError}
+              </p>
+            ) : null}
           </div>
         </div>
       </aside>
@@ -550,6 +758,11 @@ function App() {
         onQueryChange={setQuery}
         onOpenNewCardForm={openNewCardForm}
         onOpenImport={openImportModal}
+        filter={filter}
+        sectionCounts={getFolderSectionCounts(activeFolder)}
+        sections={folderSections}
+        onFilterChange={setFilter}
+        onDeleteCard={deleteCard}
       />
 
       {isEditorOpen && (
@@ -567,7 +780,11 @@ function App() {
       {isImportOpen && (
         <div className="modalOverlay" onClick={closeImportModal}>
           <div className="modalWindow" onClick={(event) => event.stopPropagation()}>
-            <ImportWords onClose={closeImportModal} onImport={handleImportWords} />
+            <ImportWords
+              onClose={closeImportModal}
+              onImport={handleImportWords}
+              onImportSuccess={handleImportSuccess}
+            />
           </div>
         </div>
       )}
