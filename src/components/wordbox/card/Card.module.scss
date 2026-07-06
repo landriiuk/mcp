@@ -6,8 +6,8 @@
   min-height: 178px;
   padding: 16px;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: white;
+  border-radius: 12px;
+  background: var(--white);
   box-sizing: border-box;
 }
 
@@ -20,8 +20,8 @@
 .cardImage {
   margin: -16px -16px 0;
   overflow: hidden;
-  border-radius: 8px 8px 0 0;
-  background: #f6f6f2;
+  border-radius: 16px 16px 0 0;
+  background: var(--card-image-bg);
 }
 
 .cardImageElement {
@@ -62,8 +62,8 @@
   margin: 0;
   padding: 12px 13px;
   border-left: 4px solid var(--yellow);
-  background: #fff9df;
-  color: #4e4631;
+  background: var(--example-bg);
+  color: var(--example-text);
   font-size: 14px;
   line-height: 1.42;
 }

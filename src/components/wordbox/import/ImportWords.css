@@ -1,0 +1,163 @@
+.importWords {
+  display: grid;
+  gap: 18px;
+}
+
+.importWordsHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.importWordsHeader h2 {
+  margin-top: 4px;
+  font-size: 28px;
+  color: var(--ink);
+}
+
+.importIntro {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+  max-width: 560px;
+}
+
+.importCloseButton {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--ghost-bg);
+  color: var(--ink);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.importActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.importFileInput {
+  display: none;
+}
+
+.ghostButton {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 8px;
+  background: var(--ghost-bg);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.importFileName {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.importErrors {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--danger-soft);
+  color: var(--red);
+}
+
+.importErrors p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.importErrors p + p {
+  margin-top: 4px;
+}
+
+.importSuccess {
+  margin: 0;
+  color: var(--green);
+  font-weight: 700;
+}
+
+.importPreview {
+  display: grid;
+  gap: 10px;
+}
+
+.importPreviewLabel {
+  margin: 0;
+  color: var(--label-text);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.importPreviewTableWrap {
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.importPreviewTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.importPreviewTable th,
+.importPreviewTable td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.importPreviewTable th {
+  background: var(--pill-subtle-bg);
+  color: var(--label-text);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.importPreviewTable tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.importPreviewMore {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.importPreviewMore:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.importFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.importFooter button:not(.primary) {
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: var(--pill-subtle-bg);
+  color: var(--chip-text);
+  font-weight: 800;
+}

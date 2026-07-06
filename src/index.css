@@ -1,5 +1,6 @@
 :root {
   --ink: #18202a;
+  --ink-gradient-end: #2f4458;
   --muted: #657282;
   --line: #d9e0e8;
   --paper: #f7f8f5;
@@ -10,6 +11,37 @@
   --blue-soft: #dbe9f5;
   --red: #b64c41;
   --yellow: #f2c94c;
+  --violet: #6952a3;
+  --violet-soft: #e7e1f6;
+
+  --app-bg: #f4f2eb;
+  --sidebar-bg: #f0efe8;
+  --content-bg: #fcfcf8;
+  --editor-bg: #fcfcf8;
+  --ghost-bg: #ecebe4;
+  --pill-bg: #f1f0e8;
+  --pill-subtle-bg: #eef2f4;
+  --chip-bg: #eef2f4;
+  --chip-text: #40505e;
+  --pill-text: #4b5563;
+  --folder-hint: #7a818a;
+  --folder-dot: #8a8f96;
+  --inline-btn-text: #4f5660;
+  --label-text: #52606d;
+  --example-bg: #fff9df;
+  --example-text: #4e4631;
+  --danger-soft: #fae8e5;
+  --card-image-bg: #f6f6f2;
+  --page-bg: #ebece7;
+
+  --count-bg: rgba(24, 32, 42, 0.07);
+  --nav-hover-bg: rgba(36, 121, 90, 0.08);
+  --overlay: rgba(12, 18, 25, 0.58);
+  --border-subtle: rgba(24, 32, 42, 0.08);
+  --focus-ring: rgba(36, 121, 90, 0.28);
+  --modal-shadow: rgba(8, 14, 22, 0.16);
+  --search-inset: rgba(255, 255, 255, 0.7);
+  --shadow: 0 18px 50px rgba(27, 38, 49, 0.14);
 
   color: var(--ink);
   background: var(--paper);

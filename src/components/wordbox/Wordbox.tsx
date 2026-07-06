@@ -8,20 +8,90 @@ interface WordboxCard {
   example: string;
   status: 'new' | 'learning' | 'known';
   tags: string[];
+  folder: string;
 }
+
+type CardFilter = "all" | "learning" | "known";
+
+type Section = {
+  value: CardFilter;
+  label: string;
+};
+
+type SectionCounts = {
+  all: number;
+  learning: number;
+  known: number;
+};
 
 interface WordboxProps {
   cards: WordboxCard[];
   query: string;
   onQueryChange: (value: string) => void;
   onOpenNewCardForm: () => void;
+  onOpenImport: () => void;
+  filter: CardFilter;
+  sectionCounts: SectionCounts;
+  sections: readonly Section[];
+  onFilterChange: (value: CardFilter) => void;
+  onDeleteCard: (cardId: string) => void;
 }
 
-export function Wordbox({ cards, query, onQueryChange, onOpenNewCardForm }: WordboxProps) {
+export function Wordbox({
+  cards,
+  query,
+  onQueryChange,
+  onOpenNewCardForm,
+  onOpenImport,
+  filter,
+  sectionCounts,
+  sections,
+  onFilterChange,
+  onDeleteCard,
+}: WordboxProps) {
+  const newCount = cards.filter((card) => card.status === "new").length;
+
   return (
     <section className="content">
+      <div className="contentHeader">
+        <div>
+          <p className="eyebrow">Vocabulary workspace</p>
+          <h1>Cards</h1>
+          <p className="intro">
+            Capture new words and revisit them in short review sessions.
+          </p>
+        </div>
+
+        <div className="headerMeta">
+          <span className="pill">{cards.length} cards</span>
+          <button className="ghost" onClick={onOpenImport} type="button">
+            Import CSV
+          </button>
+          <button className="primary" onClick={onOpenNewCardForm} type="button">
+            + Add card
+          </button>
+        </div>
+      </div>
+
+      <nav className="contentSections" aria-label="Card sections">
+        {sections.map(({ value, label }) => (
+          <button
+            className={filter === value ? "active" : ""}
+            key={value}
+            onClick={() => onFilterChange(value)}
+            type="button"
+          >
+            <span>{label}</span>
+            <strong>{sectionCounts[value]}</strong>
+          </button>
+        ))}
+      </nav>
+
       <section className="toolbar" aria-label="Search and filters">
         <label className="search">
+          <span aria-hidden="true" className="searchIcon">
+            ⌕
+          </span>
           <input
             aria-label="Search words, translations, notes"
             onChange={(event) => onQueryChange(event.target.value)}
@@ -31,9 +101,7 @@ export function Wordbox({ cards, query, onQueryChange, onOpenNewCardForm }: Word
           />
         </label>
 
-        <button className="primary" onClick={onOpenNewCardForm} type="button">
-          + Add card
-        </button>
+        <span className="pill subtle">{newCount} new</span>
       </section>
 
       <div className="wordboxGrid">
@@ -45,12 +113,20 @@ export function Wordbox({ cards, query, onQueryChange, onOpenNewCardForm }: Word
             className="wordboxCard"
             footer={
               <div className="cardFooterActions">
+                <span className="chip">{word.folder}</span>
                 <span className={`chip status ${word.status}`}>{word.status}</span>
                 {word.tags.map((tag) => (
                   <span className="chip" key={tag}>
                     {tag}
                   </span>
                 ))}
+                <button
+                  className="chip danger"
+                  onClick={() => onDeleteCard(word.id)}
+                  type="button"
+                >
+                  delete
+                </button>
               </div>
             }
           >

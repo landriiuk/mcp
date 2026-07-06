@@ -22,9 +22,9 @@ function isConnectionError(err) {
   )
 }
 
-// Lightweight in-memory fallback for local dev (no native modules)
 function createInMemoryDb() {
-  const store = new Map()
+  const wordStore = new Map()
+  const folderStore = new Map()
 
   function nowISO() {
     return new Date().toISOString()
@@ -37,7 +37,7 @@ function createInMemoryDb() {
       if (s.startsWith('SELECT * FROM WORDS ORDER BY')) {
         return {
           async all() {
-            return Array.from(store.values()).sort((a, b) => (b.created_at > a.created_at ? 1 : -1))
+            return Array.from(wordStore.values()).sort((a, b) => (b.created_at > a.created_at ? 1 : -1))
           },
         }
       }
@@ -45,14 +45,43 @@ function createInMemoryDb() {
       if (s.startsWith('SELECT * FROM WORDS WHERE ID =')) {
         return {
           async get(id) {
-            return store.get(id)
+            return wordStore.get(id)
+          },
+        }
+      }
+
+      if (s.startsWith('SELECT NAME FROM FOLDERS ORDER BY')) {
+        return {
+          async all() {
+            return Array.from(folderStore.values()).map((folder) => ({ name: folder.name }))
+          },
+        }
+      }
+
+      if (s.startsWith('SELECT NAME FROM FOLDERS WHERE NAME =')) {
+        return {
+          async get(name) {
+            return folderStore.get(name) ? { name } : null
+          },
+        }
+      }
+
+      if (s.startsWith('SELECT FOLDER AS NAME, COUNT(*) AS COUNT FROM WORDS GROUP BY FOLDER')) {
+        return {
+          async all() {
+            const grouped = new Map()
+            for (const row of wordStore.values()) {
+              const folderName = row.folder || 'General'
+              grouped.set(folderName, (grouped.get(folderName) || 0) + 1)
+            }
+            return Array.from(grouped.entries()).map(([name, count]) => ({ name, count }))
           },
         }
       }
 
       if (s.startsWith('INSERT INTO WORDS')) {
         return {
-          async run(id, word, meaning, example, status, tags, created_at, updated_at) {
+          async run(id, word, meaning, example, status, tags, folder, created_at, updated_at) {
             const row = {
               id,
               word,
@@ -60,10 +89,11 @@ function createInMemoryDb() {
               example,
               status,
               tags,
+              folder: folder || 'General',
               created_at: created_at || nowISO(),
               updated_at: updated_at || nowISO(),
             }
-            store.set(id, row)
+            wordStore.set(id, row)
             return { lastInsertRowid: id }
           },
         }
@@ -71,8 +101,8 @@ function createInMemoryDb() {
 
       if (s.startsWith('UPDATE WORDS SET')) {
         return {
-          async run(word, meaning, example, status, tags, updated_at, id) {
-            const existing = store.get(id)
+          async run(word, meaning, example, status, tags, folder, updated_at, id) {
+            const existing = wordStore.get(id)
             if (!existing) return { changes: 0 }
             const updated = {
               ...existing,
@@ -81,9 +111,10 @@ function createInMemoryDb() {
               example,
               status,
               tags,
+              folder: folder || 'General',
               updated_at: updated_at || nowISO(),
             }
-            store.set(id, updated)
+            wordStore.set(id, updated)
             return { changes: 1 }
           },
         }
@@ -92,13 +123,55 @@ function createInMemoryDb() {
       if (s.startsWith('DELETE FROM WORDS WHERE ID =')) {
         return {
           async run(id) {
-            const existed = store.delete(id)
+            const existed = wordStore.delete(id)
             return { changes: existed ? 1 : 0 }
           },
         }
       }
 
-      // Fallback: return no-op handlers
+      if (s.startsWith('INSERT INTO FOLDERS')) {
+        return {
+          async run(name) {
+            folderStore.set(name, { name })
+            return { changes: 1 }
+          },
+        }
+      }
+
+      if (s.startsWith('UPDATE FOLDERS SET')) {
+        return {
+          async run(newName, oldName) {
+            const existing = folderStore.get(oldName)
+            if (!existing) return { changes: 0 }
+            folderStore.delete(oldName)
+            folderStore.set(newName, { name: newName })
+            return { changes: 1 }
+          },
+        }
+      }
+
+      if (s.startsWith('UPDATE WORDS SET FOLDER =')) {
+        return {
+          async run(newFolder, oldFolder) {
+            for (const [id, row] of wordStore.entries()) {
+              if (row.folder === oldFolder) {
+                wordStore.set(id, { ...row, folder: newFolder })
+              }
+            }
+            return { changes: 1 }
+          },
+        }
+      }
+
+      if (s.startsWith('DELETE FROM FOLDERS WHERE NAME =')) {
+        return {
+          async run(name) {
+            const existed = folderStore.delete(name)
+            return { changes: existed ? 1 : 0 }
+          },
+        }
+      }
+
       return {
         async run() {
           return null
@@ -115,6 +188,35 @@ function createInMemoryDb() {
 }
 
 let db
+let sharedInMemoryDb = null
+let postgresDisabled = false
+
+function getSharedInMemoryDb() {
+  if (!sharedInMemoryDb) {
+    sharedInMemoryDb = createInMemoryDb()
+    console.warn('Using shared in-memory database.')
+  }
+  return sharedInMemoryDb
+}
+
+function disablePostgres(err) {
+  if (!isProduction && isConnectionError(err)) {
+    if (!postgresDisabled) {
+      postgresDisabled = true
+      console.warn('Postgres unavailable; switching to shared in-memory database for this process.')
+    }
+    return true
+  }
+  return false
+}
+
+function runWithFallback(sql, operation, params) {
+  if (postgresDisabled) {
+    return getSharedInMemoryDb().prepare(sql)[operation](...params)
+  }
+
+  return null
+}
 
 const forceLocal = APP_ENV === 'local'
 const forceProduction = APP_ENV === 'production'
@@ -135,6 +237,12 @@ if (forceLocal) {
 
   async function ensurePostgresSchema() {
     await pool.query(`
+      CREATE TABLE IF NOT EXISTS folders (
+        name TEXT PRIMARY KEY
+      )
+    `)
+
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS words (
         id TEXT PRIMARY KEY,
         word TEXT NOT NULL,
@@ -142,18 +250,28 @@ if (forceLocal) {
         example TEXT,
         status TEXT NOT NULL,
         tags TEXT,
+        folder TEXT NOT NULL DEFAULT 'General',
         created_at TIMESTAMPTZ NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL
       )
     `)
+
+    await pool.query(`
+      ALTER TABLE words
+      ADD COLUMN IF NOT EXISTS folder TEXT NOT NULL DEFAULT 'General'
+    `)
   }
 
   ensurePostgresSchema().catch((err) => {
-    console.error('Failed to initialize Postgres schema:', err)
+    if (disablePostgres(err)) {
+      console.warn('Postgres unavailable in development; using shared in-memory database.')
+      return
+    }
+
+    console.error('Failed to initialize Postgres schema:', err.message || err)
     if (isProduction) {
       throw err
     }
-    console.warn('Falling back to local SQLite because Postgres is unavailable in development.')
   })
 
   db = {
@@ -161,36 +279,48 @@ if (forceLocal) {
       const converted = convertPlaceholders(sql)
       return {
         async run(...params) {
+          const fallbackResult = runWithFallback(sql, 'run', params)
+          if (fallbackResult) {
+            return fallbackResult
+          }
+
           try {
             return await pool.query(converted, params)
           } catch (err) {
-            if (!isProduction && isConnectionError(err)) {
-              console.warn('Postgres unavailable, using local SQLite for this request.')
-              return createInMemoryDb().prepare(sql).run(...params)
+            if (disablePostgres(err)) {
+              return getSharedInMemoryDb().prepare(sql).run(...params)
             }
             throw err
           }
         },
         async get(...params) {
+          const fallbackResult = runWithFallback(sql, 'get', params)
+          if (fallbackResult) {
+            return fallbackResult
+          }
+
           try {
             const res = await pool.query(converted, params)
             return res.rows[0]
           } catch (err) {
-            if (!isProduction && isConnectionError(err)) {
-              console.warn('Postgres unavailable, using local SQLite for this request.')
-              return createInMemoryDb().prepare(sql).get(...params)
+            if (disablePostgres(err)) {
+              return getSharedInMemoryDb().prepare(sql).get(...params)
             }
             throw err
           }
         },
         async all(...params) {
+          const fallbackResult = runWithFallback(sql, 'all', params)
+          if (fallbackResult) {
+            return fallbackResult
+          }
+
           try {
             const res = await pool.query(converted, params)
             return res.rows
           } catch (err) {
-            if (!isProduction && isConnectionError(err)) {
-              console.warn('Postgres unavailable, using local SQLite for this request.')
-              return createInMemoryDb().prepare(sql).all(...params)
+            if (disablePostgres(err)) {
+              return getSharedInMemoryDb().prepare(sql).all(...params)
             }
             throw err
           }
