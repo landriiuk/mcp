@@ -8,6 +8,7 @@ interface WordboxCard {
   example: string;
   status: 'new' | 'learning' | 'known';
   tags: string[];
+  folder: string;
 }
 
 interface WordboxProps {
@@ -15,13 +16,39 @@ interface WordboxProps {
   query: string;
   onQueryChange: (value: string) => void;
   onOpenNewCardForm: () => void;
+  onOpenImport: () => void;
 }
 
-export function Wordbox({ cards, query, onQueryChange, onOpenNewCardForm }: WordboxProps) {
+export function Wordbox({ cards, query, onQueryChange, onOpenNewCardForm, onOpenImport }: WordboxProps) {
+  const newCount = cards.filter((card) => card.status === "new").length;
+
   return (
     <section className="content">
+      <div className="contentHeader">
+        <div>
+          <p className="eyebrow">Vocabulary workspace</p>
+          <h1>Cards</h1>
+          <p className="intro">
+            Capture new words and revisit them in short review sessions.
+          </p>
+        </div>
+
+        <div className="headerMeta">
+          <span className="pill">{cards.length} cards</span>
+          <button className="ghost" onClick={onOpenImport} type="button">
+            Import CSV
+          </button>
+          <button className="primary" onClick={onOpenNewCardForm} type="button">
+            + Add card
+          </button>
+        </div>
+      </div>
+
       <section className="toolbar" aria-label="Search and filters">
         <label className="search">
+          <span aria-hidden="true" className="searchIcon">
+            ⌕
+          </span>
           <input
             aria-label="Search words, translations, notes"
             onChange={(event) => onQueryChange(event.target.value)}
@@ -31,9 +58,7 @@ export function Wordbox({ cards, query, onQueryChange, onOpenNewCardForm }: Word
           />
         </label>
 
-        <button className="primary" onClick={onOpenNewCardForm} type="button">
-          + Add card
-        </button>
+        <span className="pill subtle">{newCount} new</span>
       </section>
 
       <div className="wordboxGrid">
@@ -45,6 +70,7 @@ export function Wordbox({ cards, query, onQueryChange, onOpenNewCardForm }: Word
             className="wordboxCard"
             footer={
               <div className="cardFooterActions">
+                <span className="chip">{word.folder}</span>
                 <span className={`chip status ${word.status}`}>{word.status}</span>
                 {word.tags.map((tag) => (
                   <span className="chip" key={tag}>

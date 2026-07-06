@@ -6,6 +6,7 @@ interface CardDraft {
   example: string;
   status: "new" | "learning" | "known";
   tags: string;
+  folder: string;
 }
 
 interface CardEditorProps {
@@ -21,6 +22,7 @@ export function CardEditor({ editingId, onSubmit, onReset }: CardEditorProps) {
     example: "",
     status: "new",
     tags: "",
+    folder: "General",
   });
 
   const handleDraftChange = (
@@ -42,6 +44,7 @@ export function CardEditor({ editingId, onSubmit, onReset }: CardEditorProps) {
       example: "",
       status: "new",
       tags: "",
+      folder: "General",
     });
     onReset?.();
   };
@@ -100,15 +103,29 @@ export function CardEditor({ editingId, onSubmit, onReset }: CardEditorProps) {
         </label>
 
         <label>
-          Tags
-          <input
-            name="tags"
+          Folder
+          <select
+            name="folder"
             onChange={handleDraftChange}
-            placeholder="work, writing"
-            value={draft.tags}
-          />
+            value={draft.folder}
+          >
+            <option value="General">General</option>
+            <option value="Work">Work</option>
+            <option value="Study">Study</option>
+            <option value="Travel">Travel</option>
+          </select>
         </label>
       </div>
+
+      <label>
+        Tags
+        <input
+          name="tags"
+          onChange={handleDraftChange}
+          placeholder="work, writing"
+          value={draft.tags}
+        />
+      </label>
 
       <div className="formActions">
         <button className="primary" type="submit">

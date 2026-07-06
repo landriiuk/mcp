@@ -1,0 +1,174 @@
+import { useRef, useState } from "react";
+import {
+  downloadImportTemplate,
+  IMPORT_COLUMNS,
+  parseWordsTable,
+  type ImportWordRow,
+} from "../../../utils/importWords";
+import "./ImportWords.css";
+
+type ImportWordsProps = {
+  onClose: () => void;
+  onImport: (rows: ImportWordRow[]) => Promise<{ imported: number; skipped: number; errors: string[] }>;
+};
+
+export function ImportWords({ onClose, onImport }: ImportWordsProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [previewRows, setPreviewRows] = useState<ImportWordRow[]>([]);
+  const [parseErrors, setParseErrors] = useState<string[]>([]);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [result, setResult] = useState<{ imported: number; skipped: number } | null>(null);
+
+  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    setResult(null);
+    setImportError(null);
+
+    if (!file) {
+      setFileName(null);
+      setPreviewRows([]);
+      setParseErrors([]);
+      return;
+    }
+
+    setFileName(file.name);
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const content = typeof reader.result === "string" ? reader.result : "";
+      const parsed = parseWordsTable(content);
+      setPreviewRows(parsed.rows);
+      setParseErrors(parsed.errors);
+    };
+    reader.readAsText(file);
+  }
+
+  async function handleImport() {
+    if (previewRows.length === 0) {
+      return;
+    }
+
+    setIsImporting(true);
+    setImportError(null);
+
+    try {
+      const response = await onImport(previewRows);
+      setResult({ imported: response.imported, skipped: response.skipped });
+
+      if (response.errors.length > 0) {
+        setParseErrors(response.errors);
+      }
+    } catch (error) {
+      setImportError("Could not import words. Try again.");
+    } finally {
+      setIsImporting(false);
+    }
+  }
+
+  const previewLimit = 5;
+
+  return (
+    <div className="importWords">
+      <div className="importWordsHeader">
+        <div>
+          <p className="eyebrow">Bulk import</p>
+          <h2>Upload a table</h2>
+          <p className="importIntro">
+            Import words from CSV with columns: {IMPORT_COLUMNS.join(", ")}.
+          </p>
+        </div>
+        <button className="importCloseButton" onClick={onClose} type="button" aria-label="Close">
+          ×
+        </button>
+      </div>
+
+      <div className="importActions">
+        <button className="ghostButton" onClick={downloadImportTemplate} type="button">
+          Download template
+        </button>
+        <button className="primary" onClick={() => fileInputRef.current?.click()} type="button">
+          Choose file
+        </button>
+        <input
+          ref={fileInputRef}
+          accept=".csv,text/csv"
+          className="importFileInput"
+          onChange={handleFileChange}
+          type="file"
+        />
+      </div>
+
+      {fileName ? <p className="importFileName">Selected: {fileName}</p> : null}
+
+      {parseErrors.length > 0 ? (
+        <div className="importErrors" role="alert">
+          {parseErrors.map((error) => (
+            <p key={error}>{error}</p>
+          ))}
+        </div>
+      ) : null}
+
+      {importError ? <p className="importErrors">{importError}</p> : null}
+
+      {result ? (
+        <p className="importSuccess">
+          Imported {result.imported} word{result.imported === 1 ? "" : "s"}
+          {result.skipped > 0 ? `, skipped ${result.skipped}` : ""}.
+        </p>
+      ) : null}
+
+      {previewRows.length > 0 ? (
+        <div className="importPreview">
+          <p className="importPreviewLabel">
+            Preview ({previewRows.length} row{previewRows.length === 1 ? "" : "s"})
+          </p>
+          <div className="importPreviewTableWrap">
+            <table className="importPreviewTable">
+              <thead>
+                <tr>
+                  {IMPORT_COLUMNS.map((column) => (
+                    <th key={column}>{column}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {previewRows.slice(0, previewLimit).map((row, index) => (
+                  <tr key={`${row.word}-${index}`}>
+                    <td>{row.word}</td>
+                    <td>{row.meaning}</td>
+                    <td>{row.example}</td>
+                    <td>{row.status}</td>
+                    <td>{row.tags}</td>
+                    <td>{row.folder}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {previewRows.length > previewLimit ? (
+            <p className="importPreviewMore">
+              + {previewRows.length - previewLimit} more row
+              {previewRows.length - previewLimit === 1 ? "" : "s"}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="importFooter">
+        <button onClick={onClose} type="button">
+          Cancel
+        </button>
+        <button
+          className="primary"
+          disabled={previewRows.length === 0 || isImporting}
+          onClick={handleImport}
+          type="button"
+        >
+          {isImporting ? "Importing..." : `Import ${previewRows.length || ""} words`.trim()}
+        </button>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,73 @@
+import db from "../../lib/db";
+
+function normalizeFolderName(value) {
+  return (value || "").trim().replace(/\s+/g, " ");
+}
+
+export default async function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
+  if (req.method === "GET") {
+    const rows = await db.prepare("SELECT name FROM folders ORDER BY name ASC").all();
+    return res.status(200).json(rows.map((row) => row.name));
+  }
+
+  if (req.method === "POST") {
+    const name = normalizeFolderName(req.body?.name);
+
+    if (!name) {
+      return res.status(400).json({ error: "Folder name is required." });
+    }
+
+    const existing = await db.prepare("SELECT name FROM folders WHERE name = ?").get(name);
+    if (existing) {
+      return res.status(409).json({ error: "Folder already exists." });
+    }
+
+    await db.prepare("INSERT INTO folders (name) VALUES (?)").run(name);
+    return res.status(201).json({ name });
+  }
+
+  if (req.method === "PUT") {
+    const oldName = normalizeFolderName(req.body?.oldName);
+    const newName = normalizeFolderName(req.body?.newName);
+
+    if (!oldName || !newName) {
+      return res.status(400).json({ error: "Folder names are required." });
+    }
+
+    const existing = await db.prepare("SELECT name FROM folders WHERE name = ?").get(newName);
+    if (existing && existing.name !== oldName) {
+      return res.status(409).json({ error: "Folder already exists." });
+    }
+
+    await db.prepare("UPDATE folders SET name = ? WHERE name = ?").run(newName, oldName);
+    await db.prepare("UPDATE words SET folder = ? WHERE folder = ?").run(newName, oldName);
+    return res.status(200).json({ name: newName });
+  }
+
+  if (req.method === "DELETE") {
+    const name = normalizeFolderName(req.body?.name);
+
+    if (!name) {
+      return res.status(400).json({ error: "Folder name is required." });
+    }
+
+    if (name === "General") {
+      return res.status(400).json({ error: "General folder cannot be deleted." });
+    }
+
+    await db.prepare("DELETE FROM folders WHERE name = ?").run(name);
+    await db.prepare("UPDATE words SET folder = ? WHERE folder = ?").run("General", name);
+    return res.status(200).json({ deleted: name });
+  }
+
+  res.setHeader("Allow", ["GET", "POST", "PUT", "DELETE"]);
+  return res.status(405).end(`Method ${req.method} Not Allowed`);
+}

@@ -10,11 +10,23 @@ function normalizeRow(row) {
           .map((tag) => tag.trim())
           .filter(Boolean)
       : [],
+    folder: row.folder || "General",
   };
 }
 
+async function ensureFolderExists(folderName) {
+  const normalizedFolder = (folderName || "General").trim() || "General";
+  const existing = await db.prepare("SELECT name FROM folders WHERE name = ?").get(normalizedFolder);
+
+  if (existing) {
+    return normalizedFolder;
+  }
+
+  await db.prepare("INSERT INTO folders (name) VALUES (?)").run(normalizedFolder);
+  return normalizedFolder;
+}
+
 export default async function handler(req, res) {
-  // CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader(
     "Access-Control-Allow-Methods",
@@ -46,6 +58,7 @@ export default async function handler(req, res) {
         example = "",
         status = "new",
         tags = [],
+        folder = "General",
       } = req.body || {};
 
       if (!word?.trim() || !meaning?.trim()) {
@@ -59,11 +72,12 @@ export default async function handler(req, res) {
       const normalizedTags = Array.isArray(tags)
         ? tags.filter(Boolean).join(",")
         : "";
+      const normalizedFolder = await ensureFolderExists(folder);
 
       const stmt = db.prepare(`
         INSERT INTO words
-        (id, word, meaning, example, status, tags, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        (id, word, meaning, example, status, tags, folder, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       await stmt.run(
@@ -73,6 +87,7 @@ export default async function handler(req, res) {
         example.trim(),
         status,
         normalizedTags,
+        normalizedFolder,
         now,
         now
       );
@@ -84,6 +99,7 @@ export default async function handler(req, res) {
         example: example.trim(),
         status,
         tags: Array.isArray(tags) ? tags.filter(Boolean) : [],
+        folder: normalizedFolder,
         created_at: now,
         updated_at: now,
       });
