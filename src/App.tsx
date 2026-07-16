@@ -1,79 +1,52 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import "./App.css";
 import { Wordbox } from "./components/wordbox/Wordbox";
-import { CardEditor } from './components/wordbox/add-card/CardEditor';
+import { CardEditor } from "./components/wordbox/add-card/CardEditor";
 import { ImportWords } from "./components/wordbox/import/ImportWords";
+import { FolderSidebar } from "./components/sidebar/FolderSidebar";
+import { apiBaseUrl, FOLDER_NAME_MAX_LENGTH, FOLDER_NAME_TOO_LONG_ERROR } from "./constants";
+import { sampleCards } from "./data/sampleCards";
+import type { Card, Draft } from "./types/card";
 import { getImportTargetFolder, type ImportWordRow } from "./utils/importWords";
-
-type CardStatus = "new" | "learning" | "known";
-
-type Card = {
-  id: string;
-  word: string;
-  meaning: string;
-  example: string;
-  status: CardStatus;
-  tags: string[];
-  folder: string;
-};
-
-type Draft = {
-  word: string;
-  meaning: string;
-  example: string;
-  status: CardStatus;
-  tags: string;
-  folder: string;
-};
-
-const initialCards: Card[] = [
-  {
-    id: "brief",
-    word: "brief",
-    meaning: "short in time, duration, or length",
-    example: "Keep the update brief and useful.",
-    status: "learning",
-    tags: ["work"],
-    folder: "Work",
-  },
-  {
-    id: "accurate",
-    word: "accurate",
-    meaning: "correct and without mistakes",
-    example: "The report has accurate numbers.",
-    status: "new",
-    tags: ["writing"],
-    folder: "Study",
-  },
-  {
-    id: "smooth",
-    word: "smooth",
-    meaning: "easy and without problems or interruptions",
-    example: "The meeting had a smooth start.",
-    status: "known",
-    tags: ["speaking"],
-    folder: "General",
-  },
-];
+import {
+  countSessionPool,
+  gradeCard,
+  isDue,
+  isNewCard,
+  isScheduledDue,
+  reviewFieldsForStatus,
+  type ReviewGrade,
+} from "./utils/reviewAlgorithm";
+import {
+  folderPath,
+  isReservedFolderName,
+  learningPath,
+  parseLocation,
+} from "./utils/routes";
+import { installButtonClickGuard } from "./utils/buttonClickGuard";
 
 const emptyDraft: Draft = {
   word: "",
   meaning: "",
   example: "",
   status: "new",
-  tags: "",
+  tags: [],
   folder: "General",
 };
-const apiBaseUrl = import.meta.env.VITE_API_URL || "/api";
-const FOLDER_NAME_MAX_LENGTH = 50;
-const FOLDER_NAME_TOO_LONG_ERROR = `Folder name must be ${FOLDER_NAME_MAX_LENGTH} characters or fewer.`;
 
 function App() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { folder: activeFolder, isLearningMode } = useMemo(
+    () => parseLocation(location.pathname),
+    [location.pathname],
+  );
+
   const [cards, setCards] = useState<Card[]>([]);
   const [query, setQuery] = useState("");
-  const [folders, setFolders] = useState<string[]>(["General"]);
-  const [filter, setFilter] = useState<CardStatus | "all">("all");
-  const [activeFolder, setActiveFolder] = useState<string>("all");
+  const [folders, setFolders] = useState<string[]>([]);
+  const [filter, setFilter] = useState<"all" | "learning" | "known">("all");
   const [folderDraft, setFolderDraft] = useState("");
   const [editingFolder, setEditingFolder] = useState<string | null>(null);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
@@ -84,26 +57,69 @@ function App() {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    try {
+      const stored =
+        window.localStorage.getItem("inklex.sidebarCollapsed") ??
+        window.localStorage.getItem("wordly.sidebarCollapsed");
+      return stored === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "inklex.sidebarCollapsed",
+        isSidebarCollapsed ? "1" : "0",
+      );
+    } catch {
+      // Ignore storage failures.
+    }
+  }, [isSidebarCollapsed]);
+
+  useEffect(() => installButtonClickGuard(), []);
+
+  function toggleSidebar() {
+    setIsSidebarCollapsed((collapsed) => {
+      if (!collapsed) {
+        cancelFolderEditing();
+      }
+      return !collapsed;
+    });
+  }
 
   useEffect(() => {
     async function loadWords() {
       try {
-        const response = await fetch(`${apiBaseUrl}/words`);
-        if (!response.ok) {
+        const [wordsResponse, foldersResponse] = await Promise.all([
+          fetch(`${apiBaseUrl}/words`),
+          fetch(`${apiBaseUrl}/folders`),
+        ]);
+
+        if (!wordsResponse.ok) {
           throw new Error("Failed to load words from backend");
         }
 
-        const data = await response.json();
+        const data = await wordsResponse.json();
+        const apiFolders = foldersResponse.ok ? await foldersResponse.json() : [];
+        const folderNames = Array.isArray(apiFolders)
+          ? apiFolders.filter((name: unknown): name is string => typeof name === "string")
+          : [];
+
         setCards(data);
-        setFolders((currentFolders) => {
-          const nextFolders = Array.from(
-            new Set(["General", ...currentFolders, ...data.map((card: Card) => card.folder || "General")]),
-          ).sort();
-          return nextFolders;
-        });
+        setFolders(
+          Array.from(
+            new Set([
+              ...folderNames,
+              ...data.map((card: Card) => card.folder).filter(Boolean),
+            ]),
+          ).sort(),
+        );
       } catch (error) {
         setLoadError("Unable to load backend data. Using local sample words.");
-        setCards(initialCards);
+        setCards(sampleCards);
         setFolders(["General", "Work", "Study", "Travel"]);
       } finally {
         setIsLoading(false);
@@ -113,12 +129,32 @@ function App() {
     loadWords();
   }, []);
 
+  useEffect(() => {
+    if (isLoading || activeFolder === "all") {
+      return;
+    }
+
+    const folderExists = folders.some(
+      (folder) => folder.toLowerCase() === activeFolder.toLowerCase(),
+    );
+
+    if (!folderExists) {
+      navigate("/", { replace: true });
+    }
+  }, [isLoading, activeFolder, folders, navigate]);
+
   const filteredCards = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
     return cards.filter((card) => {
-      const matchesFilter = filter === "all" || card.status === filter;
       const matchesFolder = activeFolder === "all" || card.folder === activeFolder;
+
+      if (isLearningMode) {
+        // Due-first pool: scheduled due (incl. decayed known) + unscheduled new.
+        return matchesFolder && isDue(card);
+      }
+
+      const matchesFilter = filter === "all" || card.status === filter;
       const searchable = [
         card.word,
         card.meaning,
@@ -132,7 +168,7 @@ function App() {
 
       return matchesFilter && matchesFolder && searchable.includes(normalizedQuery);
     });
-  }, [cards, filter, query, activeFolder]);
+  }, [cards, filter, query, activeFolder, isLearningMode]);
 
   const counts = useMemo(
     () => ({
@@ -148,7 +184,10 @@ function App() {
     return cards.reduce<
       Record<string, { all: number; new: number; learning: number; known: number }>
     >((accumulator, card) => {
-      const folderName = card.folder || "General";
+      const folderName = card.folder?.trim();
+      if (!folderName) {
+        return accumulator;
+      }
 
       if (!accumulator[folderName]) {
         accumulator[folderName] = { all: 0, new: 0, learning: 0, known: 0 };
@@ -159,6 +198,36 @@ function App() {
       return accumulator;
     }, {});
   }, [cards]);
+
+  const optionPool = useMemo(() => {
+    if (activeFolder === "all") {
+      return cards;
+    }
+
+    return cards.filter((card) => card.folder === activeFolder);
+  }, [cards, activeFolder]);
+
+  const folderPracticeCards = useMemo(() => {
+    return cards.filter((card) => {
+      const matchesFolder = activeFolder === "all" || card.folder === activeFolder;
+      return matchesFolder && isDue(card);
+    });
+  }, [cards, activeFolder]);
+
+  const sessionPool = useMemo(
+    () => countSessionPool(folderPracticeCards),
+    [folderPracticeCards],
+  );
+
+  const hasAheadOfSchedule = useMemo(() => {
+    return cards.some((card) => {
+      const matchesFolder = activeFolder === "all" || card.folder === activeFolder;
+      if (!matchesFolder || card.status === "known") {
+        return false;
+      }
+      return Boolean(card.next_review_at) && !isScheduledDue(card) && !isNewCard(card);
+    });
+  }, [cards, activeFolder]);
 
   function getFolderSectionCounts(folder: string) {
     if (folder === "all") {
@@ -180,19 +249,27 @@ function App() {
 
   const folderSections = [
     { value: "all", label: "Cards" },
-    { value: "learning", label: "Review" },
+    { value: "learning", label: "Learning" },
     { value: "known", label: "Known" },
   ] as const;
 
   function selectFolder(folder: string) {
-    setActiveFolder(folder);
     setFilter("all");
+    navigate(folderPath(folder));
+  }
+
+  function startLearning() {
+    navigate(learningPath(activeFolder));
+  }
+
+  function exitLearning() {
+    navigate(folderPath(activeFolder));
   }
 
   useEffect(() => {
     setFolders((currentFolders) => {
       const nextFolders = Array.from(
-        new Set(["General", ...currentFolders, ...cards.map((card) => card.folder || "General")]),
+        new Set([...currentFolders, ...cards.map((card) => card.folder).filter(Boolean)]),
       ).sort();
 
       return nextFolders;
@@ -214,6 +291,10 @@ function App() {
       return FOLDER_NAME_TOO_LONG_ERROR;
     }
 
+    if (isReservedFolderName(normalizedName)) {
+      return `"${normalizedName}" is reserved. Choose another name.`;
+    }
+
     return null;
   }
 
@@ -225,6 +306,9 @@ function App() {
   }
 
   function startCreatingFolder() {
+    if (isSidebarCollapsed) {
+      setIsSidebarCollapsed(false);
+    }
     setEditingFolder(null);
     setIsCreatingFolder(true);
     setFolderDraft("");
@@ -232,6 +316,9 @@ function App() {
   }
 
   function startEditingFolder(folder: string) {
+    if (isSidebarCollapsed) {
+      setIsSidebarCollapsed(false);
+    }
     setIsCreatingFolder(false);
     setEditingFolder(folder);
     setFolderDraft(folder);
@@ -356,8 +443,8 @@ function App() {
         }
 
         setFolders((currentFolders) => [...currentFolders, normalizedName].sort());
-        setActiveFolder(normalizedName);
         setFilter("all");
+        navigate(folderPath(normalizedName));
         cancelFolderEditing();
       } catch (error) {
         setFolderError(error instanceof Error ? error.message : "Could not create folder.");
@@ -403,7 +490,7 @@ function App() {
       );
 
       if (activeFolder === editingFolder) {
-        setActiveFolder(normalizedName);
+        navigate(folderPath(normalizedName));
       }
 
       cancelFolderEditing();
@@ -439,7 +526,7 @@ function App() {
       setFolders((currentFolders) => currentFolders.filter((currentFolder) => currentFolder !== folder));
 
       if (activeFolder === folder) {
-        setActiveFolder("all");
+        navigate("/");
       }
     } catch (error) {
       setFolderError("Could not delete folder.");
@@ -467,8 +554,8 @@ function App() {
   }
 
   function handleImportSuccess(targetFolder: string) {
-    setActiveFolder(targetFolder);
     setFilter("all");
+    navigate(folderPath(targetFolder));
     closeImportModal();
   }
 
@@ -485,7 +572,8 @@ function App() {
           tags: row.tags
             .split(",")
             .map((tag) => tag.trim())
-            .filter(Boolean),
+            .filter(Boolean)
+            .slice(0, 3),
           folder: row.folder,
         })),
       }),
@@ -503,9 +591,8 @@ function App() {
       setFolders((currentFolders) =>
         Array.from(
           new Set([
-            "General",
             ...currentFolders,
-            ...importedWords.map((card: Card) => card.folder || "General"),
+            ...importedWords.map((card: Card) => card.folder).filter(Boolean),
           ]),
         ).sort(),
       );
@@ -530,16 +617,17 @@ function App() {
       return;
     }
 
+    const review = reviewFieldsForStatus("new");
+    const existing = editingId ? cards.find((entry) => entry.id === editingId) : null;
     const payload = {
       word,
       meaning,
       example: card.example.trim(),
-      status: card.status,
-      tags: card.tags
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter(Boolean),
-      folder: card.folder.trim() || "General",
+      status: "new" as const,
+      tags: card.tags.slice(0, 3),
+      folder: card.folder.trim(),
+      interval_days: existing?.interval_days ?? review.interval_days,
+      next_review_at: existing?.next_review_at ?? review.next_review_at,
     };
 
     if (editingId) {
@@ -575,12 +663,13 @@ function App() {
     resetForm();
   }
 
-  async function deleteCard(cardId) {
+  async function deleteCard(cardId: string) {
     const response = await fetch(`${apiBaseUrl}/words/${cardId}`, {
       method: "DELETE",
     });
 
-    if (!response.ok) {
+    // 204 = deleted; 404 = already gone on server (stale UI after mock DB reset)
+    if (!response.ok && response.status !== 404) {
       return;
     }
 
@@ -590,170 +679,89 @@ function App() {
     }
   }
 
-  async function markKnown(cardId) {
+  async function handleReviewGrade(cardId: string, grade: ReviewGrade) {
     const card = cards.find((entry) => entry.id === cardId);
     if (!card) {
       return;
     }
 
-    const response = await fetch(`${apiBaseUrl}/words/${cardId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...card,
-        status: "known",
-      }),
-    });
+    const review = gradeCard(card, grade);
+    const optimisticCard = { ...card, ...review };
 
-    if (!response.ok) {
-      return;
-    }
-
-    const updatedCard = await response.json();
     setCards((current) =>
-      current.map((item) => (item.id === cardId ? updatedCard : item)),
+      current.map((item) => (item.id === cardId ? optimisticCard : item)),
     );
+
+    const rollback = () => {
+      setCards((current) =>
+        current.map((item) => (item.id === cardId ? card : item)),
+      );
+    };
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/words/${cardId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(optimisticCard),
+      });
+
+      if (!response.ok) {
+        rollback();
+        return;
+      }
+
+      const updatedCard = await response.json();
+      const parsedInterval = Number(updatedCard.interval_days);
+      setCards((current) =>
+        current.map((item) =>
+          item.id === cardId
+            ? {
+                ...optimisticCard,
+                ...updatedCard,
+                interval_days: Number.isFinite(parsedInterval)
+                  ? parsedInterval
+                  : review.interval_days,
+                next_review_at:
+                  updatedCard.next_review_at !== undefined
+                    ? updatedCard.next_review_at
+                    : review.next_review_at,
+                status: updatedCard.status || review.status,
+              }
+            : item,
+        ),
+      );
+    } catch {
+      rollback();
+    }
   }
 
   return (
-    <main className="app">
-      <aside className="sidebar">
-        <a className="brand" href="/" aria-label="Wordly home">
-          <span className="brandIcon">Aa</span>
-          <span>Wordly</span>
-        </a>
+    <main className={`app${isSidebarCollapsed ? " sidebarCollapsed" : ""}`}>
+      <FolderSidebar
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={toggleSidebar}
+        activeFolder={activeFolder}
+        folders={folders}
+        getFolderSectionCounts={getFolderSectionCounts}
+        onSelectFolder={selectFolder}
+        isCreatingFolder={isCreatingFolder}
+        editingFolder={editingFolder}
+        folderDraft={folderDraft}
+        folderError={folderError}
+        folderInputRef={folderInputRef}
+        onStartCreatingFolder={startCreatingFolder}
+        onStartEditingFolder={startEditingFolder}
+        onDeleteFolder={deleteFolder}
+        onFolderDraftChange={handleFolderDraftChange}
+        onFolderKeyDown={handleFolderInputKeyDown}
+        onFolderBlur={handleFolderInputBlur}
+        onFolderPaste={handleFolderPaste}
+      />
 
-        <div className="folderPanel">
-          <div className="folderAllRow">
-            <button
-              className={activeFolder === "all" ? "folderButton folderAllButton active" : "folderButton folderAllButton"}
-              onClick={() => selectFolder("all")}
-              type="button"
-            >
-              <span>All</span>
-              <strong>{getFolderSectionCounts("all").all}</strong>
-            </button>
-            <button
-              className="folderAddButton"
-              disabled={isCreatingFolder}
-              onClick={startCreatingFolder}
-              type="button"
-              title="Create folder"
-              aria-label="Create folder"
-            >
-              +
-            </button>
-          </div>
-
-          <div className="folderList">
-            {folders.map((folder) => {
-              const folderCount = getFolderSectionCounts(folder).all;
-              const isActiveFolder = activeFolder === folder;
-              const isEditing = editingFolder === folder;
-
-              return (
-                <div className="folderRowGroup" key={folder}>
-                  <div
-                    className={`folderRow${isActiveFolder ? " active" : ""}${isEditing ? " editing" : ""}`}
-                  >
-                    {isEditing ? (
-                      <input
-                        ref={folderInputRef}
-                        aria-label={`Rename ${folder}`}
-                        aria-invalid={folderError ? true : undefined}
-                        className="folderInlineInput"
-                        onChange={(event) => handleFolderDraftChange(event.target.value)}
-                        onKeyDown={handleFolderInputKeyDown}
-                        onBlur={handleFolderInputBlur}
-                        onPaste={handleFolderPaste}
-                        type="text"
-                        value={folderDraft}
-                      />
-                    ) : (
-                      <button
-                        className="folderButton"
-                        onClick={() => selectFolder(folder)}
-                        type="button"
-                      >
-                        <span>{folder}</span>
-                        <strong>{folderCount}</strong>
-                      </button>
-                    )}
-                    {isEditing ? (
-                      <strong className="folderCountBadge">{folderCount}</strong>
-                    ) : (
-                      <div className="folderInlineActions">
-                        <button
-                          className="folderInlineButton"
-                          onClick={() => startEditingFolder(folder)}
-                          type="button"
-                          title={`Rename ${folder}`}
-                          aria-label={`Rename ${folder}`}
-                        >
-                          <svg viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M4 17.5V20h2.5l7.4-7.4-2.5-2.5L4 17.5Zm13.7-8.3a.8.8 0 0 0 0-1.2l-1.3-1.3a.8.8 0 0 0-1.2 0l-1.6 1.6 2.5 2.5 1.6-1.6Z" />
-                          </svg>
-                        </button>
-                        <button
-                          className="folderInlineButton"
-                          disabled={folder === "General"}
-                          onClick={() => deleteFolder(folder)}
-                          type="button"
-                          title={`Delete ${folder}`}
-                          aria-label={`Delete ${folder}`}
-                        >
-                          <svg viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M8 6V4h8v2h4v2H4V6h4Zm2 4h2v8H10v-8Zm4 0h2v8h-2v-8Z" />
-                          </svg>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  {isEditing && folderError ? (
-                    <p className="folderInlineError" role="alert">
-                      {folderError}
-                    </p>
-                  ) : null}
-                </div>
-              );
-            })}
-
-            {isCreatingFolder ? (
-              <div className="folderRowGroup">
-                <div className="folderRow creating">
-                  <input
-                    ref={folderInputRef}
-                    aria-label="New folder name"
-                    aria-invalid={folderError ? true : undefined}
-                    className="folderInlineInput"
-                    onChange={(event) => handleFolderDraftChange(event.target.value)}
-                    onKeyDown={handleFolderInputKeyDown}
-                    onBlur={handleFolderInputBlur}
-                    onPaste={handleFolderPaste}
-                    placeholder="Folder name"
-                    type="text"
-                    value={folderDraft}
-                  />
-                  <strong className="folderCountBadge">0</strong>
-                </div>
-                {folderError ? (
-                  <p className="folderInlineError" role="alert">
-                    {folderError}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
-
-            {folderError && !isCreatingFolder && !editingFolder ? (
-              <p className="folderInlineError" role="alert">
-                {folderError}
-              </p>
-            ) : null}
-          </div>
-        </div>
-      </aside>
       <Wordbox
         cards={filteredCards}
+        optionPool={optionPool}
+        sessionScope={activeFolder}
         query={query}
         onQueryChange={setQuery}
         onOpenNewCardForm={openNewCardForm}
@@ -763,15 +771,43 @@ function App() {
         sections={folderSections}
         onFilterChange={setFilter}
         onDeleteCard={deleteCard}
+        onReviewGrade={handleReviewGrade}
+        isLearningMode={isLearningMode}
+        dueCount={sessionPool.due}
+        newCount={sessionPool.news}
+        sessionSize={sessionPool.sessionSize}
+        hasAheadOfSchedule={hasAheadOfSchedule}
+        onStartLearning={startLearning}
+        onExitLearning={exitLearning}
       />
 
       {isEditorOpen && (
         <div className="modalOverlay" onClick={resetForm}>
           <div className="modalWindow" onClick={(event) => event.stopPropagation()}>
             <CardEditor
+              key={editingId ?? `new-${activeFolder}`}
               editingId={editingId ?? undefined}
+              folders={folders}
+              preferredFolder={activeFolder}
               onSubmit={handleSubmit}
               onReset={resetForm}
+              onCreateFolder={async (name) => {
+                const response = await fetch(`${apiBaseUrl}/folders`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ name }),
+                });
+
+                if (!response.ok) {
+                  const data = await response.json().catch(() => ({}));
+                  throw new Error(data.error || "Failed to create folder");
+                }
+
+                setFolders((currentFolders) =>
+                  Array.from(new Set([...currentFolders, name])).sort(),
+                );
+                return name;
+              }}
             />
           </div>
         </div>

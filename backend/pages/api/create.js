@@ -2,7 +2,11 @@ import crypto from "crypto";
 import db from "../../lib/db";
 
 async function ensureFolderExists(folderName) {
-  const normalizedFolder = (folderName || "General").trim() || "General";
+  const normalizedFolder = (folderName || "").trim();
+  if (!normalizedFolder) {
+    return "";
+  }
+
   const existing = await db.prepare("SELECT name FROM folders WHERE name = ?").get(normalizedFolder);
 
   if (existing) {
@@ -40,7 +44,9 @@ export default async function handler(req, res) {
     example = "",
     status = "new",
     tags = [],
-    folder = "General",
+    folder = "",
+    interval_days = 0,
+    next_review_at = null,
   } = req.body || {};
 
   if (!word?.trim() || !meaning?.trim()) {
@@ -55,12 +61,16 @@ export default async function handler(req, res) {
     ? tags.filter(Boolean).join(",")
     : "";
   const normalizedFolder = await ensureFolderExists(folder);
+  const review = {
+    interval_days: Number(interval_days) || 0,
+    next_review_at: next_review_at || null,
+  };
 
   try {
     const stmt = db.prepare(`
       INSERT INTO words
-      (id, word, meaning, example, status, tags, folder, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, word, meaning, example, status, tags, folder, interval_days, next_review_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     await stmt.run(
@@ -71,6 +81,8 @@ export default async function handler(req, res) {
       status,
       normalizedTags,
       normalizedFolder,
+      review.interval_days,
+      review.next_review_at,
       now,
       now
     );
@@ -83,6 +95,8 @@ export default async function handler(req, res) {
       status,
       tags: Array.isArray(tags) ? tags.filter(Boolean) : [],
       folder: normalizedFolder,
+      interval_days: review.interval_days,
+      next_review_at: review.next_review_at,
       created_at: now,
       updated_at: now,
     });

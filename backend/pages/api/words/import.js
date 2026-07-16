@@ -29,6 +29,8 @@ function normalizeRow(row) {
           .filter(Boolean)
       : [],
     folder: row.folder || "General",
+    interval_days: Number(row.interval_days) || 0,
+    next_review_at: row.next_review_at || null,
   };
 }
 
@@ -70,8 +72,8 @@ export default async function handler(req, res) {
 
   const stmt = db.prepare(`
     INSERT INTO words
-    (id, word, meaning, example, status, tags, folder, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, word, meaning, example, status, tags, folder, interval_days, next_review_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const created = [];
@@ -96,6 +98,8 @@ export default async function handler(req, res) {
     const folder = await ensureFolderExists(entry.folder || "General");
     const now = new Date().toISOString();
     const newId = crypto.randomUUID();
+    const interval_days = 0;
+    const next_review_at = null;
 
     try {
       await stmt.run(
@@ -106,6 +110,8 @@ export default async function handler(req, res) {
         status,
         normalizedTags,
         folder,
+        interval_days,
+        next_review_at,
         now,
         now
       );
@@ -119,6 +125,8 @@ export default async function handler(req, res) {
           status,
           tags: normalizedTags,
           folder,
+          interval_days,
+          next_review_at,
           created_at: now,
           updated_at: now,
         })

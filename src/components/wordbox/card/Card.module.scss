@@ -2,11 +2,11 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 18px;
+  gap: 16px;
   min-height: 178px;
   padding: 16px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--white);
   box-sizing: border-box;
 }
@@ -20,7 +20,7 @@
 .cardImage {
   margin: -16px -16px 0;
   overflow: hidden;
-  border-radius: 16px 16px 0 0;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   background: var(--card-image-bg);
 }
 
@@ -34,22 +34,24 @@
 .cardBody {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .cardTitle {
   margin: 0;
   color: var(--ink);
-  font-size: 24px;
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 600;
   line-height: 1.1;
-  letter-spacing: 0;
+  letter-spacing: -0.01em;
 }
 
 .cardSubtitle {
   margin: 0;
   color: var(--muted);
   font-size: 14px;
-  line-height: 1.38;
+  line-height: 1.4;
 }
 
 .cardContent {
@@ -60,18 +62,20 @@
 
 .cardContent :global(blockquote) {
   margin: 0;
-  padding: 12px 13px;
-  border-left: 4px solid var(--yellow);
-  background: var(--example-bg);
-  color: var(--example-text);
-  font-size: 14px;
-  line-height: 1.42;
+  padding: 10px 0 10px 12px;
+  border-left: 3px solid #b4df3a;
+  background: #eef9d6;
+  color: #1f5c30;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-style: italic;
+  line-height: 1.45;
 }
 
 .cardFooter {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   margin-top: auto;
 }

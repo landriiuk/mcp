@@ -6,6 +6,11 @@
   gap: 0;
   color: var(--ink);
   background: var(--app-bg);
+  transition: grid-template-columns 180ms ease;
+}
+
+.app.sidebarCollapsed {
+  grid-template-columns: 72px minmax(0, 1fr);
 }
 
 .sidebar {
@@ -13,6 +18,15 @@
   padding: 24px 20px;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--line);
+  transition: padding 180ms ease;
+}
+
+.sidebarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 32px;
 }
 
 .brand {
@@ -20,23 +34,120 @@
   align-items: center;
   gap: 10px;
   width: fit-content;
-  margin-bottom: 28px;
+  margin-bottom: 0;
   color: var(--ink);
-  font-size: 18px;
-  font-weight: 800;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   text-decoration: none;
+  min-width: 0;
+}
+
+.brandText {
+  white-space: nowrap;
+}
+
+.sidebarToggle {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease;
+}
+
+.sidebarToggle:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+.sidebarToggle svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.folderInitial {
+  display: none;
 }
 
 .brandIcon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
   background: linear-gradient(135deg, var(--ink) 0%, var(--ink-gradient-end) 100%);
   color: var(--white);
   display: grid;
   place-items: center;
-  font-size: 13px;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 700;
   letter-spacing: 0;
+  flex-shrink: 0;
+}
+
+.sidebar.isCollapsed {
+  padding: 20px 12px;
+}
+
+.sidebar.isCollapsed .sidebarHeader {
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.sidebar.isCollapsed .brandText,
+.sidebar.isCollapsed .folderLabel,
+.sidebar.isCollapsed .folderCount,
+.sidebar.isCollapsed .folderCountBadge,
+.sidebar.isCollapsed .folderInlineActions,
+.sidebar.isCollapsed .folderInlineError {
+  display: none;
+}
+
+.sidebar.isCollapsed .folderInitial {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  font-size: 13px;
+  font-weight: 700;
+  color: inherit;
+}
+
+.sidebar.isCollapsed .folderAllRow {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.sidebar.isCollapsed .folderButton {
+  justify-content: center;
+  padding: 0;
+  min-height: 36px;
+}
+
+.sidebar.isCollapsed .folderAddButton,
+.sidebar.isCollapsed .sidebarToggle {
+  width: 100%;
+}
+
+.sidebar.isCollapsed .folderRow {
+  justify-content: center;
+}
+
+.sidebar.isCollapsed .folderRow.editing,
+.sidebar.isCollapsed .folderRow.creating {
+  display: none;
 }
 
 .nav {
@@ -61,15 +172,15 @@
 }
 
 .folderAddButton {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   flex-shrink: 0;
-  border-radius: 8px;
+  border-radius: var(--radius);
   border: 1px solid var(--line);
-  background: var(--white);
+  background: transparent;
   color: var(--muted);
-  font-size: 20px;
-  font-weight: 800;
+  font-size: 18px;
+  font-weight: 600;
   line-height: 1;
   display: grid;
   place-items: center;
@@ -114,7 +225,7 @@
   align-items: center;
   gap: 6px;
   padding: 2px;
-  border-radius: 10px;
+  border-radius: var(--radius);
 }
 
 .folderRow.active {
@@ -129,34 +240,23 @@
   padding: 2px 6px;
 }
 
-.folderInlineInput {
-  flex: 1;
-  min-width: 0;
-  min-height: 34px;
-  padding: 0 8px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--white);
-  color: var(--ink);
-  font-size: 14px;
-  font-weight: 600;
-}
-
 .folderCountBadge {
-  min-width: 26px;
-  padding: 4px 6px;
-  border-radius: 999px;
-  background: var(--count-bg);
-  color: var(--chip-text);
+  min-width: 18px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
   font-size: 12px;
-  text-align: center;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .folderButton {
   flex: 1;
-  min-height: 38px;
-  padding: 0 10px;
-  border-radius: 8px;
+  min-height: 36px;
+  padding: 0 8px;
+  border-radius: var(--radius);
   background: transparent;
   color: var(--muted);
   display: flex;
@@ -164,39 +264,52 @@
   justify-content: space-between;
   border: 1px solid transparent;
   text-align: left;
+  font-weight: 500;
 }
 
-.folderButton strong {
-  min-width: 26px;
-  padding: 4px 6px;
-  border-radius: 999px;
-  background: var(--count-bg);
-  color: var(--chip-text);
+.folderButton strong,
+.folderButton .folderCount {
+  min-width: 18px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
   font-size: 12px;
-  text-align: center;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .folderButton.active {
   background: transparent;
   color: var(--ink);
-  font-weight: 700;
+  font-weight: 600;
   border-color: transparent;
+}
+
+.folderButton.active strong,
+.folderButton.active .folderCount {
+  color: var(--ink);
 }
 
 .folderInlineActions {
   display: flex;
-  gap: 4px;
+  gap: 2px;
 }
 
 .folderInlineButton {
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
-  background: var(--ghost-bg);
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius);
+  background: transparent;
   color: var(--inline-btn-text);
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.folderInlineButton:hover {
+  background: var(--ghost-bg);
 }
 
 .folderInlineButton svg {
@@ -219,20 +332,19 @@ select {
 
 button {
   border: 0;
-  cursor: pointer;
 }
 
 .nav button {
-  min-height: 44px;
-  padding: 0 12px;
-  border-radius: 12px;
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: var(--radius);
   color: var(--muted);
   background: transparent;
   display: flex;
   align-items: center;
   justify-content: space-between;
   text-align: left;
-  transition: background-color 160ms ease, color 160ms ease, transform 160ms ease;
+  transition: background-color 140ms ease, color 140ms ease;
 }
 
 .nav button:hover {
@@ -241,19 +353,22 @@ button {
 }
 
 .nav button strong {
-  min-width: 28px;
-  padding: 4px 7px;
-  border-radius: 999px;
-  background: var(--count-bg);
-  color: var(--chip-text);
+  min-width: 18px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
   font-size: 12px;
-  text-align: center;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .nav button.active {
   color: var(--ink);
   background: var(--green-soft);
-  font-weight: 800;
+  border: 1px solid var(--line);
+  font-weight: 600;
 }
 
 .modalOverlay {
@@ -271,9 +386,10 @@ button {
   max-height: min(92vh, 900px);
   overflow: auto;
   background: var(--white);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   padding: 24px;
-  box-shadow: 0 20px 60px var(--modal-shadow);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--line);
 }
 
 .cardsGrid {
@@ -286,7 +402,7 @@ button {
 .editor,
 .emptyState {
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   background: var(--white);
 }
 
@@ -347,25 +463,27 @@ h2 {
 .chip,
 .chipRow button {
   width: fit-content;
-  border-radius: 999px;
-  background: var(--chip-bg);
+  border-radius: var(--radius);
+  background: transparent;
+  border: 1px solid var(--line);
   color: var(--chip-text);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .chip {
-  padding: 7px 9px;
+  padding: 5px 8px;
 }
 
 .chipRow button {
   min-height: 26px;
-  padding: 0 9px;
+  padding: 0 8px;
 }
 
 .status {
   text-transform: lowercase;
+  border-color: transparent;
 }
 
 .status.new {
@@ -386,7 +504,8 @@ h2 {
 .chipRow .danger {
   margin-left: auto;
   color: var(--red);
-  background: var(--danger-soft);
+  background: transparent;
+  border-color: transparent;
 }
 
 .editor {
@@ -394,21 +513,24 @@ h2 {
   display: grid;
   gap: 14px;
   border: 1px solid var(--line);
-  border-radius: 20px;
+  border-radius: var(--radius-lg);
   background: var(--editor-bg);
 }
 
 .eyebrow {
   color: var(--muted);
   font-size: 12px;
-  font-weight: 850;
-  letter-spacing: 0.08em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
 .editor h2 {
   margin-top: 4px;
-  font-size: 28px;
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 .editor label {
@@ -416,8 +538,9 @@ h2 {
   gap: 7px;
   color: var(--label-text);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .editor input,
@@ -425,12 +548,172 @@ h2 {
 .editor select {
   width: 100%;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius);
   background: var(--white);
   color: var(--ink);
   padding: 11px 12px;
   text-transform: none;
   resize: vertical;
+  transition: border-color 140ms ease;
+}
+
+.editor .uiInput {
+  /* Shared Input already owns field chrome; keep form layout width. */
+  width: 100%;
+}
+
+.editor input:hover,
+.editor textarea:hover,
+.editor select:hover,
+.editor input:focus,
+.editor textarea:focus,
+.editor select:focus {
+  border-color: var(--green);
+  outline: none;
+}
+
+.tagField {
+  display: grid;
+  gap: 7px;
+}
+
+.tagFieldHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tagFieldLabel {
+  color: var(--label-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tagFieldCount {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.folderField {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+}
+
+.folderFieldLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--label-text);
+}
+
+.folderSelectRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.folderSelectRow select {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.folderInlineCreate {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+}
+
+.folderInlineHint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.folderInlineCreateActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.folderCreateLink {
+  width: fit-content;
+  white-space: nowrap;
+}
+
+.tagInput {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--white);
+  transition: border-color 140ms ease;
+}
+
+.tagInput:hover,
+.tagInput:focus-within {
+  border-color: var(--green);
+}
+
+.tagInput.isFull {
+  background: var(--ghost-bg);
+}
+
+.tagChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--green-soft);
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.tagChip:hover {
+  border-color: var(--green);
+}
+
+.tagInput input {
+  flex: 1;
+  min-width: 96px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 6px 4px;
+  font-size: 14px;
+}
+
+.tagInput input:hover,
+.tagInput input:focus {
+  border-color: transparent;
+}
+
+.tagInput input:disabled {
+  cursor: not-allowed;
+}
+
+.tagFieldHint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .formRow {
@@ -449,10 +732,10 @@ h2 {
 .formActions button:not(.primary) {
   min-height: 40px;
   padding: 0 12px;
-  border-radius: 10px;
+  border-radius: var(--radius);
   background: var(--pill-subtle-bg);
   color: var(--chip-text);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .emptyState {

@@ -1,0 +1,46 @@
+.uiInput {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--white);
+  color: var(--ink);
+  font: inherit;
+  text-transform: none;
+  transition: border-color 140ms ease;
+}
+
+.uiInput::placeholder {
+  color: var(--muted);
+}
+
+.uiInput:hover,
+.uiInput:focus {
+  border-color: var(--green);
+  outline: none;
+}
+
+.uiInput.isInvalid,
+.uiInput.isInvalid:hover,
+.uiInput.isInvalid:focus {
+  border-color: var(--red);
+}
+
+.uiInput:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.uiInputMd {
+  width: 100%;
+  padding: 11px 12px;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.uiInputSm {
+  flex: 1;
+  min-width: 0;
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 14px;
+  font-weight: 500;
+}
