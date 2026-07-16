@@ -1,40 +1,239 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Input } from "../../ui/Input";
+import { isReservedFolderName } from "../../../utils/routes";
+
+const MAX_TAGS = 3;
+const TAG_MAX_LENGTH = 24;
+const NO_FOLDER_VALUE = "";
+const FOLDER_NAME_MAX_LENGTH = 50;
+const FOLDER_NAME_TOO_LONG_ERROR = `Folder name must be ${FOLDER_NAME_MAX_LENGTH} characters or fewer.`;
 
 interface CardDraft {
   word: string;
   meaning: string;
   example: string;
   status: "new" | "learning" | "known";
-  tags: string;
+  tags: string[];
   folder: string;
 }
 
 interface CardEditorProps {
   editingId?: string;
+  folders: string[];
+  preferredFolder?: string;
   onSubmit: (card: CardDraft) => void;
   onReset?: () => void;
+  onCreateFolder: (name: string) => Promise<string>;
 }
 
-export function CardEditor({ editingId, onSubmit, onReset }: CardEditorProps) {
-  const [draft, setDraft] = useState<CardDraft>({
+function normalizeTag(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function normalizeFolderName(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function validateFolderName(value: string) {
+  const normalizedName = normalizeFolderName(value);
+
+  if (!normalizedName) {
+    return "Folder name is required.";
+  }
+
+  if (normalizedName.length > FOLDER_NAME_MAX_LENGTH) {
+    return FOLDER_NAME_TOO_LONG_ERROR;
+  }
+
+  if (isReservedFolderName(normalizedName)) {
+    return `"${normalizedName}" is reserved. Choose another name.`;
+  }
+
+  return null;
+}
+
+function getInitialFolder(folders: string[], preferredFolder?: string) {
+  if (preferredFolder && preferredFolder !== "all") {
+    const match = folders.find(
+      (folder) => folder.toLowerCase() === preferredFolder.toLowerCase(),
+    );
+    // Always prefer the folder the user is currently viewing.
+    return match ?? preferredFolder;
+  }
+  return folders[0] ?? NO_FOLDER_VALUE;
+}
+
+export function CardEditor({
+  editingId,
+  folders,
+  preferredFolder,
+  onSubmit,
+  onReset,
+  onCreateFolder,
+}: CardEditorProps) {
+  const [draft, setDraft] = useState<CardDraft>(() => ({
     word: "",
     meaning: "",
     example: "",
     status: "new",
-    tags: "",
-    folder: "General",
-  });
+    tags: [],
+    folder: getInitialFolder(folders, preferredFolder),
+  }));
+  const [tagInput, setTagInput] = useState("");
+  const [folderDraft, setFolderDraft] = useState("");
+  const [folderError, setFolderError] = useState<string | null>(null);
+  const [isSavingFolder, setIsSavingFolder] = useState(false);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+  const hasFolders = folders.length > 0;
+
+  useEffect(() => {
+    if (!hasFolders) {
+      folderInputRef.current?.focus();
+    }
+  }, [hasFolders]);
 
   const handleDraftChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
   ) => {
     const { name, value } = e.target;
     setDraft((prev) => ({ ...prev, [name]: value }));
   };
 
+  const addTag = (raw: string) => {
+    const tag = normalizeTag(raw).slice(0, TAG_MAX_LENGTH);
+    if (!tag) {
+      return;
+    }
+
+    setDraft((prev) => {
+      if (prev.tags.length >= MAX_TAGS) {
+        return prev;
+      }
+      if (prev.tags.some((item) => item.toLowerCase() === tag.toLowerCase())) {
+        return prev;
+      }
+      return { ...prev, tags: [...prev.tags, tag] };
+    });
+    setTagInput("");
+  };
+
+  const removeTag = (tag: string) => {
+    setDraft((prev) => ({
+      ...prev,
+      tags: prev.tags.filter((item) => item !== tag),
+    }));
+  };
+
+  const handleTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addTag(tagInput);
+      return;
+    }
+
+    if (e.key === "Backspace" && !tagInput && draft.tags.length > 0) {
+      e.preventDefault();
+      removeTag(draft.tags[draft.tags.length - 1]);
+    }
+  };
+
+  const handleTagPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const text = e.clipboardData.getData("text");
+    if (!text.includes(",")) {
+      return;
+    }
+
+    e.preventDefault();
+    const parts = text
+      .split(",")
+      .map((part) => normalizeTag(part).slice(0, TAG_MAX_LENGTH))
+      .filter(Boolean);
+
+    setDraft((prev) => {
+      const next = [...prev.tags];
+      for (const tag of parts) {
+        if (next.length >= MAX_TAGS) {
+          break;
+        }
+        if (next.some((item) => item.toLowerCase() === tag.toLowerCase())) {
+          continue;
+        }
+        next.push(tag);
+      }
+      return { ...prev, tags: next };
+    });
+    setTagInput("");
+  };
+
+  const handleFolderDraftChange = (rawValue: string) => {
+    if (rawValue.length > FOLDER_NAME_MAX_LENGTH) {
+      setFolderDraft(rawValue.slice(0, FOLDER_NAME_MAX_LENGTH));
+      setFolderError(FOLDER_NAME_TOO_LONG_ERROR);
+      return;
+    }
+
+    setFolderDraft(rawValue);
+    if (folderError) {
+      setFolderError(null);
+    }
+  };
+
+  const submitInlineFolder = async () => {
+    const validationError = validateFolderName(folderDraft);
+    if (validationError) {
+      setFolderError(validationError);
+      return;
+    }
+
+    const normalizedName = normalizeFolderName(folderDraft);
+    const existingFolder = folders.find(
+      (folder) => folder.toLowerCase() === normalizedName.toLowerCase(),
+    );
+
+    if (existingFolder) {
+      setFolderError("Folder already exists.");
+      return;
+    }
+
+    setIsSavingFolder(true);
+    setFolderError(null);
+
+    try {
+      const createdName = await onCreateFolder(normalizedName);
+      setDraft((prev) => ({ ...prev, folder: createdName }));
+      setFolderDraft("");
+      setFolderError(null);
+    } catch (error) {
+      setFolderError(error instanceof Error ? error.message : "Could not create folder.");
+    } finally {
+      setIsSavingFolder(false);
+    }
+  };
+
+  const handleFolderInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void submitInlineFolder();
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    onSubmit(draft);
+    const pending = normalizeTag(tagInput);
+    const tags = [...draft.tags];
+    if (
+      pending &&
+      tags.length < MAX_TAGS &&
+      !tags.some((item) => item.toLowerCase() === pending.toLowerCase())
+    ) {
+      tags.push(pending.slice(0, TAG_MAX_LENGTH));
+    }
+    onSubmit({
+      ...draft,
+      status: "new",
+      folder: draft.folder.trim(),
+      tags: tags.slice(0, MAX_TAGS),
+    });
   };
 
   const resetForm = () => {
@@ -43,25 +242,31 @@ export function CardEditor({ editingId, onSubmit, onReset }: CardEditorProps) {
       meaning: "",
       example: "",
       status: "new",
-      tags: "",
-      folder: "General",
+      tags: [],
+      folder: getInitialFolder(folders, preferredFolder),
     });
+    setTagInput("");
+    setFolderDraft("");
+    setFolderError(null);
     onReset?.();
   };
+
+  const tagsFull = draft.tags.length >= MAX_TAGS;
 
   return (
     <form className="editor" onSubmit={handleSubmit}>
       <div>
-        <p className="eyebrow">{editingId ? "Edit card" : "New card"}</p>
-        <h2>{editingId ? "Update this word" : "Add a word"}</h2>
+        <p className="eyebrow">{editingId ? "Edit card" : "Vocabulary"}</p>
+        <h2>{editingId ? "Update this word" : "Add a new word"}</h2>
       </div>
 
       <label>
         Word
-        <input
+        <Input
           name="word"
           onChange={handleDraftChange}
-          placeholder="manage"
+          placeholder="e.g. brief"
+          required
           value={draft.word}
         />
       </label>
@@ -71,7 +276,8 @@ export function CardEditor({ editingId, onSubmit, onReset }: CardEditorProps) {
         <textarea
           name="meaning"
           onChange={handleDraftChange}
-          placeholder="to control or deal with something"
+          placeholder="Short definition in plain language"
+          required
           rows={3}
           value={draft.meaning}
         />
@@ -82,54 +288,99 @@ export function CardEditor({ editingId, onSubmit, onReset }: CardEditorProps) {
         <textarea
           name="example"
           onChange={handleDraftChange}
-          placeholder="She managed to finish the task."
+          placeholder="Optional sentence with this word"
           rows={3}
           value={draft.example}
         />
       </label>
 
       <div className="formRow">
-        <label>
-          Status
-          <select
-            name="status"
-            onChange={handleDraftChange}
-            value={draft.status}
-          >
-            <option value="new">New</option>
-            <option value="learning">Learning</option>
-            <option value="known">Known</option>
-          </select>
-        </label>
+        <div className="folderField">
+          <span className="folderFieldLabel">Folder</span>
 
-        <label>
-          Folder
-          <select
-            name="folder"
-            onChange={handleDraftChange}
-            value={draft.folder}
-          >
-            <option value="General">General</option>
-            <option value="Work">Work</option>
-            <option value="Study">Study</option>
-            <option value="Travel">Travel</option>
-          </select>
-        </label>
+          {!hasFolders ? (
+            <div className="folderInlineCreate">
+              <p className="folderInlineHint">
+                Create a folder here, or save the word without one.
+              </p>
+              <Input
+                ref={folderInputRef}
+                aria-label="New folder name"
+                invalid={Boolean(folderError)}
+                maxLength={FOLDER_NAME_MAX_LENGTH}
+                onChange={(event) => handleFolderDraftChange(event.target.value)}
+                onKeyDown={handleFolderInputKeyDown}
+                placeholder="Folder name"
+                size="sm"
+                value={folderDraft}
+              />
+              {folderError ? (
+                <p className="folderInlineError" role="alert">
+                  {folderError}
+                </p>
+              ) : null}
+              <div className="folderInlineCreateActions">
+                <button
+                  className="primary"
+                  disabled={isSavingFolder}
+                  onClick={() => void submitInlineFolder()}
+                  type="button"
+                >
+                  {isSavingFolder ? "Creating…" : "Create folder"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <select name="folder" onChange={handleDraftChange} value={draft.folder}>
+              {folders.map((folder) => (
+                <option key={folder} value={folder}>
+                  {folder}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
       </div>
 
-      <label>
-        Tags
-        <input
-          name="tags"
-          onChange={handleDraftChange}
-          placeholder="work, writing"
-          value={draft.tags}
-        />
-      </label>
+      <div className="tagField">
+        <div className="tagFieldHeader">
+          <span className="tagFieldLabel">Tags</span>
+          <span className="tagFieldCount">
+            {draft.tags.length}/{MAX_TAGS}
+          </span>
+        </div>
+        <p className="tagFieldHint">
+          Type a tag and press Enter or comma. Backspace removes the last tag.
+        </p>
+        <div className={`tagInput${tagsFull ? " isFull" : ""}`}>
+          {draft.tags.map((tag) => (
+            <button
+              className="tagChip"
+              key={tag}
+              onClick={() => removeTag(tag)}
+              type="button"
+              aria-label={`Remove tag ${tag}`}
+            >
+              <span>{tag}</span>
+              <span aria-hidden="true">×</span>
+            </button>
+          ))}
+          <input
+            aria-label="Add tag"
+            disabled={tagsFull}
+            onChange={(event) => setTagInput(event.target.value)}
+            onKeyDown={handleTagKeyDown}
+            onPaste={handleTagPaste}
+            placeholder={tagsFull ? "Max 3 tags" : draft.tags.length ? "" : "work, writing"}
+            type="text"
+            value={tagInput}
+          />
+        </div>
+      </div>
 
       <div className="formActions">
         <button className="primary" type="submit">
-          {editingId ? "Save changes" : "Create card"}
+          {editingId ? "Save changes" : "Save word"}
         </button>
         <button onClick={resetForm} type="button">
           Clear

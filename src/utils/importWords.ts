@@ -172,7 +172,7 @@ export function downloadImportTemplate() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "wordly-import-template.csv";
+  link.download = "inklex-import-template.csv";
   link.click();
   URL.revokeObjectURL(url);
 }

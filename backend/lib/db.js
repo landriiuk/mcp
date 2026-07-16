@@ -71,7 +71,10 @@ function createInMemoryDb() {
           async all() {
             const grouped = new Map()
             for (const row of wordStore.values()) {
-              const folderName = row.folder || 'General'
+              const folderName = row.folder ?? ''
+              if (!folderName) {
+                continue
+              }
               grouped.set(folderName, (grouped.get(folderName) || 0) + 1)
             }
             return Array.from(grouped.entries()).map(([name, count]) => ({ name, count }))
@@ -81,7 +84,19 @@ function createInMemoryDb() {
 
       if (s.startsWith('INSERT INTO WORDS')) {
         return {
-          async run(id, word, meaning, example, status, tags, folder, created_at, updated_at) {
+          async run(
+            id,
+            word,
+            meaning,
+            example,
+            status,
+            tags,
+            folder,
+            interval_days,
+            next_review_at,
+            created_at,
+            updated_at,
+          ) {
             const row = {
               id,
               word,
@@ -89,7 +104,9 @@ function createInMemoryDb() {
               example,
               status,
               tags,
-              folder: folder || 'General',
+              folder: typeof folder === 'string' ? folder : folder || 'General',
+              interval_days: Number(interval_days) || 0,
+              next_review_at: next_review_at ?? null,
               created_at: created_at || nowISO(),
               updated_at: updated_at || nowISO(),
             }
@@ -99,9 +116,20 @@ function createInMemoryDb() {
         }
       }
 
-      if (s.startsWith('UPDATE WORDS SET')) {
+      if (s.startsWith('UPDATE WORDS SET WORD =')) {
         return {
-          async run(word, meaning, example, status, tags, folder, updated_at, id) {
+          async run(
+            word,
+            meaning,
+            example,
+            status,
+            tags,
+            folder,
+            interval_days,
+            next_review_at,
+            updated_at,
+            id,
+          ) {
             const existing = wordStore.get(id)
             if (!existing) return { changes: 0 }
             const updated = {
@@ -111,7 +139,9 @@ function createInMemoryDb() {
               example,
               status,
               tags,
-              folder: folder || 'General',
+              folder: typeof folder === 'string' ? folder : folder || 'General',
+              interval_days: Number(interval_days) || 0,
+              next_review_at: next_review_at ?? null,
               updated_at: updated_at || nowISO(),
             }
             wordStore.set(id, updated)
@@ -188,15 +218,18 @@ function createInMemoryDb() {
 }
 
 let db
-let sharedInMemoryDb = null
 let postgresDisabled = false
 
+const globalStore = globalThis
+
 function getSharedInMemoryDb() {
-  if (!sharedInMemoryDb) {
-    sharedInMemoryDb = createInMemoryDb()
+  // Next.js can evaluate this module per route; bind to globalThis so all
+  // handlers share one in-memory store in local/dev mock mode.
+  if (!globalStore.__inklexInMemoryDb) {
+    globalStore.__inklexInMemoryDb = createInMemoryDb()
     console.warn('Using shared in-memory database.')
   }
-  return sharedInMemoryDb
+  return globalStore.__inklexInMemoryDb
 }
 
 function disablePostgres(err) {
@@ -222,11 +255,11 @@ const forceLocal = APP_ENV === 'local'
 const forceProduction = APP_ENV === 'production'
 
 if (forceLocal) {
-  db = createInMemoryDb()
+  db = getSharedInMemoryDb()
 } else if (forceProduction && !DATABASE_URL) {
   throw new Error('APP_ENV=production requires DATABASE_URL to be set')
 } else if (!DATABASE_URL) {
-  db = createInMemoryDb()
+  db = getSharedInMemoryDb()
 } else {
   const pool = new Pool({
     connectionString: DATABASE_URL,
@@ -259,6 +292,16 @@ if (forceLocal) {
     await pool.query(`
       ALTER TABLE words
       ADD COLUMN IF NOT EXISTS folder TEXT NOT NULL DEFAULT 'General'
+    `)
+
+    await pool.query(`
+      ALTER TABLE words
+      ADD COLUMN IF NOT EXISTS interval_days INTEGER NOT NULL DEFAULT 0
+    `)
+
+    await pool.query(`
+      ALTER TABLE words
+      ADD COLUMN IF NOT EXISTS next_review_at TIMESTAMPTZ
     `)
   }
 

@@ -1,0 +1,34 @@
+---
+description: InkLex MVP — product, architecture, UX, and code conventions
+alwaysApply: true
+---
+
+# InkLex — AI rules
+
+Full briefing: `docs/ai/WORKING-RULES.md`.
+
+## Product
+
+Vocabulary app (InkLex): word cards, folders, statuses `new` | `learning` | `known`, CSV import. Design: Vocabulary Desk from reverso-mvp-design-options.html.
+
+## Stack
+
+- Frontend: React + Vite + TS → `src/`
+- Backend: Next.js API → `backend/pages/api/`
+- API: `import.meta.env.VITE_API_URL || "/api"`
+
+## UX (critical)
+
+- Sidebar: **All** + **+**; no folder bullets; inline create/rename; name limit **50** chars; errors **below input**; Esc / blur = cancel
+- Content: **Cards / Learning / Known** tabs above search (counts scoped to active folder)
+- **Start Learning** → `/learning` or `/:folder/learning` (due-first, до 10 слів; див. `docs/algorithms/due-first-session.md`)
+- Folder URL: `/` (All) or `/:folderName`
+- Card: red **delete** chip on the right
+- Import: on success → close modal + open folder from CSV
+
+## Code
+
+- Minimal diff, existing patterns, CSS variables from `index.css`
+- `apiBaseUrl` for all API fetch calls
+- User-facing chat responses in **Ukrainian**
+- Commits only when explicitly requested
