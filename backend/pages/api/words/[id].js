@@ -42,6 +42,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  res.setHeader('Access-Control-Max-Age', '86400')
 
   if (req.method === 'OPTIONS') {
     res.status(204).end()
@@ -51,7 +52,14 @@ export default async function handler(req, res) {
   const { id } = req.query
 
   if (!id) {
-    return res.status(400).json({ error: 'Word ID is required.' })
+    res.status(400).json({ error: 'Word ID is required.' })
+    return
+  }
+
+  // Deploy probe: GET should include cors:true after a fresh Vercel deploy.
+  if (req.method === 'GET') {
+    res.status(200).json({ ok: true, cors: true, id })
+    return
   }
 
   if (req.method === 'PUT') {
