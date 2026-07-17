@@ -15,7 +15,7 @@ Vocabulary app (InkLex): word cards, folders, statuses `new` | `learning` | `kno
 
 - Frontend: React + Vite + TS → `src/`
 - Backend: Next.js API → `backend/pages/api/`
-- API: `import.meta.env.VITE_API_URL || "/api"`
+- API: always same-origin `/api` (`apiBaseUrl`); Vite proxies locally, root `vercel.json` rewrites to backend on Vercel
 
 ## UX (critical)
 

@@ -69,8 +69,12 @@ DATABASE_URL="postgres://..." npm run migrate-sqlite
 
 4. Deploy to Vercel:
 	- Connect the GitHub repo in Vercel.
-	- Set environment variables in Vercel (`DATABASE_URL`).
-	- Vercel will run `npm run build` in the `backend` folder as part of Next.js build.
+	- **Root Directory must be `backend`** (not the repo root — root is the Vite frontend).
+	- Set environment variables: `DATABASE_URL`, and optionally `APP_ENV=production`.
+	- Do **not** rely on `.github/workflows/deploy-render.yml` (removed — it was fully commented and failed every push).
+	- Vercel will run `npm run build` inside `backend`.
+
+If Production stays on an old commit while `main` moves: Settings → Git → confirm Production Branch + Root Directory, then Deployments → Redeploy (clear cache).
 
 Notes:
 - After migration, the app will use Postgres only. No SQLite file is needed at runtime.

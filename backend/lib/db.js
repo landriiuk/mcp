@@ -2,7 +2,9 @@ import process from 'process'
 import { Pool } from 'pg'
 
 const DATABASE_URL = process.env.DATABASE_URL
-const APP_ENV = process.env.APP_ENV || process.env.NODE_ENV || 'development'
+// Only honor explicit APP_ENV. Do not treat NODE_ENV=production (Vercel/Next build)
+// as "must have DATABASE_URL" — that breaks deploys and cold starts without a DB URL.
+const APP_ENV = process.env.APP_ENV || 'development'
 const isProduction = APP_ENV === 'production'
 
 function convertPlaceholders(sql) {

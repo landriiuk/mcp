@@ -1,11 +1,14 @@
+# Optional Render Blueprint.
+# Prefer configuring the service in the Render dashboard, or use Docker only.
+#
+# If you enable this file in Render, keep env: docker and dockerfilePath —
+# do not mix with Node buildCommand/startCommand.
+
 services:
-  - type: web_service
+  - type: web
     name: mcp-backend
-    env: docker
-    repo: https://github.com/landriiuk/mcp
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
     branch: main
-    dockerfilePath: backend/Dockerfile
-    buildCommand: npm run build
-    startCommand: npm start
     plan: starter
-    disk: 1024
