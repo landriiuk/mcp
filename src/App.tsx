@@ -5,8 +5,21 @@ import { Wordbox } from "./components/wordbox/Wordbox";
 import { CardEditor } from "./components/wordbox/add-card/CardEditor";
 import { ImportWords } from "./components/wordbox/import/ImportWords";
 import { FolderSidebar } from "./components/sidebar/FolderSidebar";
-import { apiBaseUrl, FOLDER_NAME_MAX_LENGTH, FOLDER_NAME_TOO_LONG_ERROR } from "./constants";
+import { FOLDER_NAME_MAX_LENGTH, FOLDER_NAME_TOO_LONG_ERROR } from "./constants";
+import {
+  createFolder,
+  createWord,
+  deleteFolderDoc,
+  deleteWord,
+  importWords,
+  listFolders,
+  listWords,
+  renameFolder,
+  saveWord,
+  ensureFolder,
+} from "./data/firestoreApi";
 import { sampleCards } from "./data/sampleCards";
+import { isFirebaseConfigured } from "./lib/firebase";
 import type { Card, Draft } from "./types/card";
 import { getImportTargetFolder, type ImportWordRow } from "./utils/importWords";
 import {
@@ -93,32 +106,28 @@ function App() {
   useEffect(() => {
     async function loadWords() {
       try {
-        const [wordsResponse, foldersResponse] = await Promise.all([
-          fetch(`${apiBaseUrl}/words`),
-          fetch(`${apiBaseUrl}/folders`),
-        ]);
-
-        if (!wordsResponse.ok) {
-          throw new Error("Failed to load words from backend");
+        if (!isFirebaseConfigured()) {
+          throw new Error("Firebase env is missing");
         }
 
-        const data = await wordsResponse.json();
-        const apiFolders = foldersResponse.ok ? await foldersResponse.json() : [];
-        const folderNames = Array.isArray(apiFolders)
-          ? apiFolders.filter((name: unknown): name is string => typeof name === "string")
-          : [];
+        const [data, folderNames] = await Promise.all([listWords(), listFolders()]);
+        await ensureFolder("General");
 
         setCards(data);
         setFolders(
           Array.from(
             new Set([
+              "General",
               ...folderNames,
-              ...data.map((card: Card) => card.folder).filter(Boolean),
+              ...data.map((card) => card.folder).filter(Boolean),
             ]),
           ).sort(),
         );
-      } catch (error) {
-        setLoadError("Unable to load backend data. Using local sample words.");
+        setLoadError(null);
+      } catch {
+        setLoadError(
+          "Unable to load Firebase data. Check VITE_FIREBASE_* in .env. Using local sample words.",
+        );
         setCards(sampleCards);
         setFolders(["General", "Work", "Study", "Travel"]);
       } finally {
@@ -126,7 +135,7 @@ function App() {
       }
     }
 
-    loadWords();
+    void loadWords();
   }, []);
 
   useEffect(() => {
@@ -431,17 +440,7 @@ function App() {
       }
 
       try {
-        const response = await fetch(`${apiBaseUrl}/folders`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: normalizedName }),
-        });
-
-        if (!response.ok) {
-          const data = await response.json().catch(() => ({}));
-          throw new Error(data.error || "Failed to create folder");
-        }
-
+        await createFolder(normalizedName);
         setFolders((currentFolders) => [...currentFolders, normalizedName].sort());
         setFilter("all");
         navigate(folderPath(normalizedName));
@@ -471,22 +470,15 @@ function App() {
     }
 
     try {
-      const response = await fetch(`${apiBaseUrl}/folders`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ oldName: editingFolder, newName: normalizedName }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to rename folder");
-      }
+      await renameFolder(editingFolder, normalizedName);
 
       setFolders((currentFolders) =>
         currentFolders.map((folder) => (folder === editingFolder ? normalizedName : folder)).sort(),
       );
       setCards((currentCards) =>
-        currentCards.map((card) => (card.folder === editingFolder ? { ...card, folder: normalizedName } : card)),
+        currentCards.map((card) =>
+          card.folder === editingFolder ? { ...card, folder: normalizedName } : card,
+        ),
       );
 
       if (activeFolder === editingFolder) {
@@ -510,25 +502,19 @@ function App() {
     }
 
     try {
-      const response = await fetch(`${apiBaseUrl}/folders`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: folder }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to delete folder");
-      }
+      await deleteFolderDoc(folder);
 
       setCards((currentCards) =>
         currentCards.map((card) => (card.folder === folder ? { ...card, folder: "General" } : card)),
       );
-      setFolders((currentFolders) => currentFolders.filter((currentFolder) => currentFolder !== folder));
+      setFolders((currentFolders) =>
+        currentFolders.filter((currentFolder) => currentFolder !== folder),
+      );
 
       if (activeFolder === folder) {
         navigate("/");
       }
-    } catch (error) {
+    } catch {
       setFolderError("Could not delete folder.");
     }
 
@@ -560,31 +546,22 @@ function App() {
   }
 
   async function handleImportWords(rows: ImportWordRow[]) {
-    const response = await fetch(`${apiBaseUrl}/words/import`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        words: rows.map((row) => ({
-          word: row.word,
-          meaning: row.meaning,
-          example: row.example,
-          status: row.status,
-          tags: row.tags
-            .split(",")
-            .map((tag) => tag.trim())
-            .filter(Boolean)
-            .slice(0, 3),
-          folder: row.folder,
-        })),
-      }),
-    });
+    const data = await importWords(
+      rows.map((row) => ({
+        word: row.word,
+        meaning: row.meaning,
+        example: row.example,
+        status: row.status,
+        tags: row.tags
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean)
+          .slice(0, 3),
+        folder: row.folder,
+      })),
+    );
 
-    if (!response.ok) {
-      throw new Error("Failed to import words");
-    }
-
-    const data = await response.json();
-    const importedWords = Array.isArray(data.words) ? data.words : [];
+    const importedWords = data.words;
 
     if (importedWords.length > 0) {
       setCards((current) => [...importedWords, ...current]);
@@ -592,18 +569,17 @@ function App() {
         Array.from(
           new Set([
             ...currentFolders,
-            ...importedWords.map((card: Card) => card.folder).filter(Boolean),
+            ...importedWords.map((card) => card.folder).filter(Boolean),
           ]),
         ).sort(),
       );
     }
 
     return {
-      imported: data.imported ?? importedWords.length,
-      skipped: data.skipped ?? 0,
-      errors: (data.errors ?? []).map(
-        (entry: { row?: number; error?: string }) =>
-          entry.row ? `Row ${entry.row}: ${entry.error}` : entry.error || "Import error",
+      imported: data.imported,
+      skipped: data.skipped,
+      errors: data.errors.map((entry) =>
+        entry.row ? `Row ${entry.row}: ${entry.error}` : entry.error || "Import error",
       ),
       targetFolder: getImportTargetFolder(rows),
     };
@@ -630,47 +606,30 @@ function App() {
       next_review_at: existing?.next_review_at ?? review.next_review_at,
     };
 
-    if (editingId) {
-      const response = await fetch(`${apiBaseUrl}/words/${editingId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        return;
+    try {
+      if (editingId) {
+        const updatedCard = await saveWord({
+          id: editingId,
+          ...payload,
+        });
+        setCards((current) =>
+          current.map((entry) => (entry.id === editingId ? updatedCard : entry)),
+        );
+      } else {
+        const createdCard = await createWord(payload);
+        setCards((current) => [createdCard, ...current]);
       }
-
-      const updatedCard = await response.json();
-      setCards((current) =>
-        current.map((card) => (card.id === editingId ? updatedCard : card)),
-      );
-    } else {
-      const response = await fetch(`${apiBaseUrl}/create`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        return;
-      }
-
-      const createdCard = await response.json();
-      setCards((current) => [createdCard, ...current]);
+      resetForm();
+    } catch {
+      // Keep editor open on failure.
     }
-
-    resetForm();
   }
 
   async function deleteCard(cardId: string) {
-    const response = await fetch(`${apiBaseUrl}/words/${cardId}`, {
-      method: "DELETE",
-    });
-
-    // 204 = deleted; 404 = already gone on server (stale UI after mock DB reset)
-    if (!response.ok && response.status !== 404) {
-      return;
+    try {
+      await deleteWord(cardId);
+    } catch {
+      // Still remove from UI if already gone remotely.
     }
 
     setCards((current) => current.filter((card) => card.id !== cardId));
@@ -699,36 +658,9 @@ function App() {
     };
 
     try {
-      const response = await fetch(`${apiBaseUrl}/words/${cardId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(optimisticCard),
-      });
-
-      if (!response.ok) {
-        rollback();
-        return;
-      }
-
-      const updatedCard = await response.json();
-      const parsedInterval = Number(updatedCard.interval_days);
+      const updatedCard = await saveWord(optimisticCard);
       setCards((current) =>
-        current.map((item) =>
-          item.id === cardId
-            ? {
-                ...optimisticCard,
-                ...updatedCard,
-                interval_days: Number.isFinite(parsedInterval)
-                  ? parsedInterval
-                  : review.interval_days,
-                next_review_at:
-                  updatedCard.next_review_at !== undefined
-                    ? updatedCard.next_review_at
-                    : review.next_review_at,
-                status: updatedCard.status || review.status,
-              }
-            : item,
-        ),
+        current.map((item) => (item.id === cardId ? updatedCard : item)),
       );
     } catch {
       rollback();
@@ -792,21 +724,11 @@ function App() {
               onSubmit={handleSubmit}
               onReset={resetForm}
               onCreateFolder={async (name) => {
-                const response = await fetch(`${apiBaseUrl}/folders`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ name }),
-                });
-
-                if (!response.ok) {
-                  const data = await response.json().catch(() => ({}));
-                  throw new Error(data.error || "Failed to create folder");
-                }
-
+                const created = await createFolder(name);
                 setFolders((currentFolders) =>
-                  Array.from(new Set([...currentFolders, name])).sort(),
+                  Array.from(new Set([...currentFolders, created])).sort(),
                 );
-                return name;
+                return created;
               }}
             />
           </div>

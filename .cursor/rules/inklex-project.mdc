@@ -14,8 +14,9 @@ Vocabulary app (InkLex): word cards, folders, statuses `new` | `learning` | `kno
 ## Stack
 
 - Frontend: React + Vite + TS → `src/`
-- Backend: Next.js API → `backend/pages/api/`
-- API: always same-origin `/api` (`apiBaseUrl`); Vite proxies locally, root `vercel.json` rewrites to backend on Vercel
+- Data: Firebase Firestore (client SDK) — collections `words`, `folders`
+- Legacy Next API in `backend/` is optional / deprecated for local experiments
+- Env: `VITE_FIREBASE_*` (see `.env.example`)
 
 ## UX (critical)
 

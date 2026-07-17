@@ -1,0 +1,13 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // MVP: open read/write (same as previous public API).
+    // Tighten with Firebase Auth before a public launch.
+    match /words/{wordId} {
+      allow read, write: if true;
+    }
+    match /folders/{folderId} {
+      allow read, write: if true;
+    }
+  }
+}
