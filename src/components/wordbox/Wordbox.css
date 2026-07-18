@@ -15,6 +15,13 @@
   margin-bottom: 28px;
 }
 
+.contentHeaderLead {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
 .contentHeader h1 {
   font-family: var(--font-display);
   font-size: clamp(34px, 4vw, 44px);
@@ -36,6 +43,11 @@
   gap: 8px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.headerMeta .mobileBurger {
+  order: 10;
+  margin-left: auto;
 }
 
 .contentSections {
@@ -102,6 +114,21 @@
 .contentSections button.active strong {
   background: transparent;
   color: var(--green);
+}
+
+.contentSections button.isDropTarget {
+  color: var(--green);
+  font-weight: 600;
+}
+
+.contentSections button.isDropTarget::after {
+  background: var(--green);
+  opacity: 0.55;
+  transform: scaleX(1);
+}
+
+body.isCardDragging .contentSections button {
+  transition: color 120ms ease, background-color 120ms ease;
 }
 
 .toolbar {
@@ -229,6 +256,48 @@
   transition: border-color 140ms ease, transform 140ms ease;
 }
 
+/* Beat Card.module padding shorthand; keep a clear slot for the speaker. */
+.wordboxCardDrag > .wordboxCard {
+  padding: 16px 52px 16px 16px;
+}
+
+.wordboxCardDrag > .wordboxCard h2 {
+  margin: 0;
+  padding-right: 4px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.25;
+  max-width: 100%;
+}
+
+.wordboxCardDrag {
+  position: relative;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+.wordboxCardPronounce {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+}
+
+.wordboxCardDrag.isDragging {
+  opacity: 0.55;
+  cursor: grabbing;
+}
+
+.wordboxCardDrag .chip.danger {
+  cursor: pointer;
+}
+
 .wordboxCard:hover {
   border-color: #b8c0c8;
   transform: translateY(-1px);
@@ -337,6 +406,102 @@
   background: var(--white);
   text-align: center;
   box-shadow: 0 10px 28px rgba(27, 38, 49, 0.06);
+}
+
+.sessionSuccess {
+  width: min(100%, 560px);
+  margin: 0 auto;
+  padding: 36px 28px 28px;
+  text-align: center;
+  border: 1px solid color-mix(in srgb, var(--green) 35%, var(--line));
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(
+      165deg,
+      color-mix(in srgb, var(--green) 12%, var(--white)) 0%,
+      var(--white) 48%,
+      var(--white) 100%
+    );
+  box-shadow: 0 10px 28px rgba(27, 38, 49, 0.06);
+  animation: sessionSuccessIn 420ms ease-out;
+}
+
+@keyframes sessionSuccessIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.sessionSuccessBadge {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--green);
+}
+
+.sessionSuccess h2 {
+  margin: 0 0 8px;
+  font-family: var(--font-display);
+  font-size: 36px;
+  color: var(--ink);
+}
+
+.sessionSuccessScore {
+  margin: 0 0 12px;
+  font-family: var(--font-display);
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--green);
+  animation: sessionScorePop 520ms ease-out 80ms both;
+}
+
+@keyframes sessionScorePop {
+  from {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.sessionSuccessWords {
+  margin: 0 0 22px;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+  text-align: left;
+}
+
+.sessionSuccessWords li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--white);
+}
+
+.sessionSuccessWords strong {
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.sessionSuccessWords span {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.35;
 }
 
 .sessionSummary h2 {
@@ -463,15 +628,362 @@
   text-align: center;
 }
 
-.reviewCard {
-  width: min(100%, 520px);
-  margin: 0 auto;
-  padding: 36px 28px 28px;
+.learningHubModal,
+.folderPickerModal {
+  width: min(820px, 100%);
+}
+
+.learningHubPage {
+  width: min(820px, 100%);
+  display: grid;
+  gap: 4px;
+}
+
+.learningHubHeader {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.learningHubHeader h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(28px, 4vw, 36px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.learningHubLead {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.5;
+  max-width: 52ch;
+}
+
+.learningHubModes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.learningHubCard {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--paper);
+}
+
+.learningHubCard.isPreferred {
+  border-color: rgba(36, 121, 90, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(36, 121, 90, 0.12);
+}
+
+.learningHubCardTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.learningHubCardTop h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.learningHubBadge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--green);
+  background: var(--green-soft);
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+
+.learningHubCard p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.learningHubCard ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  display: grid;
+  gap: 4px;
+}
+
+.learningHubCardMeta {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.learningHubCard .primary {
+  margin-top: 4px;
+  width: 100%;
+}
+
+.learningHubCard .primary:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.learningHubFooter {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
+.folderPickerList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.folderPickerItem {
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.folderPickerItem:hover {
+  border-color: rgba(36, 121, 90, 0.35);
+  background: var(--green-soft);
+}
+
+.folderPickerEmpty {
+  margin: 8px 0 0;
+}
+
+@media (max-width: 720px) {
+  .learningHubModes {
+    grid-template-columns: 1fr;
+  }
+}
+
+.reviewShell {
+  width: min(100%, 720px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 160px;
+  gap: 16px;
+  align-items: start;
+}
+
+.reviewFlipCard {
+  position: relative;
+  width: 100%;
+  padding: 28px 24px 20px;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: var(--white);
   text-align: center;
   box-shadow: 0 10px 28px rgba(27, 38, 49, 0.06);
+}
+
+.reviewFlipFace {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 12px 52px 20px 8px;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.reviewFlipFace:disabled {
+  cursor: default;
+}
+
+.reviewFlipHint {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.reviewFlipReveal {
+  margin-top: 18px;
+  display: grid;
+  gap: 12px;
+}
+
+.reviewFlipMeaning {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--ink-soft);
+}
+
+.reviewGradeBlock {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.reviewRecallPrompt {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+.gradePillsRates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.reviewNavRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.gradePill {
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 10px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.gradePill:disabled,
+.gradeNext:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.gradeAgain {
+  background: var(--danger-soft);
+  color: var(--red);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--red) 28%, transparent);
+}
+
+.gradeGood {
+  background: var(--green-soft);
+  color: var(--green);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--green) 28%, transparent);
+}
+
+.gradeNext {
+  min-width: 5.5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 12px 18px;
+  background: var(--white);
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.gradeNext:hover:not(:disabled) {
+  background: var(--ghost-bg);
+}
+
+.reviewStats {
+  display: grid;
+  gap: 10px;
+}
+
+.reviewStat {
+  padding: 14px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  display: grid;
+  gap: 4px;
+}
+
+.reviewStat strong {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1;
+}
+
+.reviewStat span {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+@media (max-width: 720px) {
+  .reviewShell {
+    grid-template-columns: 1fr;
+  }
+
+  .reviewStats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .reviewStat {
+    text-align: center;
+  }
+
+  .reviewNavRow {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .gradeNext {
+    width: 100%;
+  }
+}
+
+.reviewCard {
+  position: relative;
+  width: min(100%, 520px);
+  margin: 0 auto;
+  padding: 36px 52px 28px 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--white);
+  text-align: center;
+  box-shadow: 0 10px 28px rgba(27, 38, 49, 0.06);
+}
+
+.reviewCardPronounce {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
 }
 
 .reviewCardLoading {
@@ -505,14 +1017,71 @@
   }
 }
 
+.pronounceButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--pill-bg);
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pronounceButton.isCompact {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  justify-content: center;
+}
+
+.pronounceButton svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.pronounceButton:hover:not(:disabled) {
+  border-color: rgba(36, 121, 90, 0.35);
+  background: var(--green-soft);
+}
+
+.pronounceButton:disabled,
+.pronounceButton.isBusy {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.pronouncePhonetic {
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
 .reviewWord {
   margin: 0 0 18px;
+  padding-right: 4px;
   font-family: var(--font-display);
   font-size: clamp(36px, 5vw, 48px);
   font-weight: 600;
   letter-spacing: -0.02em;
-  line-height: 1.1;
+  line-height: 1.25;
   color: var(--ink);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
+}
+
+.reviewFlipFace .reviewWord {
+  margin-bottom: 0;
 }
 
 .reviewPrompt {
@@ -657,7 +1226,8 @@
   border-top: 1px solid var(--border-subtle);
 }
 
-.reviewCardActions .ghost:disabled {
+.reviewCardActions .ghost:disabled,
+.reviewNavRow .ghost:disabled {
   opacity: 0.45;
 }
 
@@ -768,6 +1338,16 @@
   .contentHeader {
     flex-direction: column;
     align-items: flex-start;
+    position: relative;
+    padding-right: 52px;
+  }
+
+  .headerMeta .mobileBurger {
+    position: absolute;
+    top: 0;
+    right: 0;
+    margin-left: 0;
+    order: 0;
   }
 
   .contentSections {

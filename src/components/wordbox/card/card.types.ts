@@ -1,5 +1,5 @@
 export type CardProps = {
-  title?: string;
+  title?: React.ReactNode;
   subtitle?: string;
   imageSrc?: string;
   imageAlt?: string;

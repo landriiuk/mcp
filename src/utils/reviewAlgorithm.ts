@@ -1,10 +1,11 @@
 export type CardStatus = "new" | "learning" | "known";
-export type ReviewGrade = "again" | "good";
+export type ReviewGrade = "again" | "good" | "easy";
 
 export type ReviewFields = {
   status: CardStatus;
   interval_days: number;
   next_review_at: string | null;
+  correct_streak: number;
 };
 
 export type ReviewCard = {
@@ -12,13 +13,14 @@ export type ReviewCard = {
   status: CardStatus;
   interval_days?: number | null;
   next_review_at?: string | null;
+  correct_streak?: number | null;
 };
 
-/** Max cards in one learning test session. */
+/** Max cards in one Quest session. */
 export const MAX_SESSION_SIZE = 10;
 
-/** Max brand-new cards introduced when filling a due-first session. */
-export const MAX_NEW_PER_SESSION = 5;
+/** Correct answers in a row required to promote to Known. */
+export const CORRECT_STREAK_TO_KNOWN = 3;
 
 /** Max wrong→requeue attempts per card within one session. */
 export const MAX_SESSION_RETRIES = 1;
@@ -38,6 +40,11 @@ function againReviewAt(now: Date): string {
   return new Date(now.getTime() + AGAIN_DELAY_MS).toISOString();
 }
 
+function normalizeStreak(value: number | null | undefined): number {
+  const n = Number(value) || 0;
+  return n < 0 ? 0 : Math.floor(n);
+}
+
 /** Step down one Leitner rung (never hard-reset from 7 → 1). */
 export function demoteInterval(current: number): number {
   if (current >= 7) {
@@ -47,6 +54,28 @@ export function demoteInterval(current: number): number {
     return INTERVAL_STEPS[0];
   }
   return INTERVAL_STEPS[0];
+}
+
+/** Soft Leitner climb for spacing — does not promote to Known. */
+function advanceLearningInterval(current: number): number {
+  if (current < 1) {
+    return INTERVAL_STEPS[0];
+  }
+  if (current < 3) {
+    return INTERVAL_STEPS[1];
+  }
+  return INTERVAL_STEPS[2];
+}
+
+/** Easy: jump two spacing steps without Known promotion. */
+function advanceLearningIntervalEasy(current: number): number {
+  if (current < 1) {
+    return INTERVAL_STEPS[1];
+  }
+  if (current < 3) {
+    return INTERVAL_STEPS[2];
+  }
+  return INTERVAL_STEPS[2];
 }
 
 /** Card has a schedule timestamp that is due (or invalid). */
@@ -75,16 +104,24 @@ export function isNewCard(card: { status: CardStatus; next_review_at?: string | 
   return !card.next_review_at;
 }
 
+/** Eligible for Quest: Cards + Learning tabs only. */
+export function isQuestEligible(card: { status: CardStatus }): boolean {
+  return card.status === "new" || card.status === "learning";
+}
+
 /**
- * Due for Start Learning:
+ * Due for Quest priority:
  * - new / unscheduled learning (no next_review_at)
- * - learning or known with next_review_at <= now
- * Legacy known with null schedule stay out until they get a decay date.
+ * - learning with next_review_at <= now
  */
 export function isDue(
   card: { status: CardStatus; next_review_at?: string | null },
   now: Date = new Date(),
 ): boolean {
+  if (!isQuestEligible(card)) {
+    return false;
+  }
+
   if (isNewCard(card)) {
     return true;
   }
@@ -92,8 +129,93 @@ export function isDue(
   return isScheduledDue(card, now);
 }
 
+function promoteToKnown(now: Date): ReviewFields {
+  return {
+    status: "known",
+    interval_days: KNOWN_INITIAL_DAYS,
+    next_review_at: addDays(now, KNOWN_INITIAL_DAYS),
+    correct_streak: 0,
+  };
+}
+
+function gradeGood(
+  card: {
+    status: CardStatus;
+    interval_days?: number | null;
+    correct_streak?: number | null;
+  },
+  now: Date,
+): ReviewFields {
+  const current = Number(card.interval_days) || 0;
+
+  if (card.status === "known") {
+    const base = Math.max(current, KNOWN_INITIAL_DAYS);
+    const extended = Math.min(KNOWN_MAX_DAYS, Math.round(base * 1.5));
+
+    return {
+      status: "known",
+      interval_days: extended,
+      next_review_at: addDays(now, extended),
+      correct_streak: 0,
+    };
+  }
+
+  const streak = normalizeStreak(card.correct_streak) + 1;
+  if (streak >= CORRECT_STREAK_TO_KNOWN) {
+    return promoteToKnown(now);
+  }
+
+  const interval = advanceLearningInterval(current);
+  return {
+    status: "learning",
+    interval_days: interval,
+    next_review_at: addDays(now, interval),
+    correct_streak: streak,
+  };
+}
+
+function gradeEasy(
+  card: {
+    status: CardStatus;
+    interval_days?: number | null;
+    correct_streak?: number | null;
+  },
+  now: Date,
+): ReviewFields {
+  const current = Number(card.interval_days) || 0;
+
+  if (card.status === "known") {
+    const base = Math.max(current, KNOWN_INITIAL_DAYS);
+    const extended = Math.min(KNOWN_MAX_DAYS, Math.round(base * 2));
+
+    return {
+      status: "known",
+      interval_days: extended,
+      next_review_at: addDays(now, extended),
+      correct_streak: 0,
+    };
+  }
+
+  const streak = normalizeStreak(card.correct_streak) + 1;
+  if (streak >= CORRECT_STREAK_TO_KNOWN) {
+    return promoteToKnown(now);
+  }
+
+  const interval = advanceLearningIntervalEasy(current);
+  return {
+    status: "learning",
+    interval_days: interval,
+    next_review_at: addDays(now, interval),
+    correct_streak: streak,
+  };
+}
+
 export function gradeCard(
-  card: { status: CardStatus; interval_days?: number | null },
+  card: {
+    status: CardStatus;
+    interval_days?: number | null;
+    correct_streak?: number | null;
+  },
   grade: ReviewGrade,
   now: Date = new Date(),
 ): ReviewFields {
@@ -109,66 +231,31 @@ export function gradeCard(
       status: "learning",
       interval_days: demoted,
       next_review_at: againReviewAt(now),
+      correct_streak: 0,
     };
   }
 
-  // Maintenance review for known (including decayed known).
-  if (card.status === "known") {
-    const base = Math.max(current, KNOWN_INITIAL_DAYS);
-    const extended = Math.min(KNOWN_MAX_DAYS, Math.round(base * 1.5));
-
-    return {
-      status: "known",
-      interval_days: extended,
-      next_review_at: addDays(now, extended),
-    };
+  if (grade === "easy") {
+    return gradeEasy(card, now);
   }
 
-  // Leitner climb: 0 → 1 → 3 → 7 → known@30d
-  if (current < 1) {
-    return {
-      status: "learning",
-      interval_days: INTERVAL_STEPS[0],
-      next_review_at: addDays(now, INTERVAL_STEPS[0]),
-    };
-  }
-
-  if (current < 3) {
-    return {
-      status: "learning",
-      interval_days: INTERVAL_STEPS[1],
-      next_review_at: addDays(now, INTERVAL_STEPS[1]),
-    };
-  }
-
-  if (current < 7) {
-    return {
-      status: "learning",
-      interval_days: INTERVAL_STEPS[2],
-      next_review_at: addDays(now, INTERVAL_STEPS[2]),
-    };
-  }
-
-  return {
-    status: "known",
-    interval_days: KNOWN_INITIAL_DAYS,
-    next_review_at: addDays(now, KNOWN_INITIAL_DAYS),
-  };
+  return gradeGood(card, now);
 }
 
-/** Fields when manually setting status in the editor. */
+/** Fields when manually setting status in the editor / drag. */
 export function reviewFieldsForStatus(
   status: CardStatus,
   now: Date = new Date(),
-): Pick<ReviewFields, "interval_days" | "next_review_at"> {
+): Pick<ReviewFields, "interval_days" | "next_review_at" | "correct_streak"> {
   if (status === "known") {
     return {
       interval_days: KNOWN_INITIAL_DAYS,
       next_review_at: addDays(now, KNOWN_INITIAL_DAYS),
+      correct_streak: 0,
     };
   }
 
-  return { interval_days: 0, next_review_at: null };
+  return { interval_days: 0, next_review_at: null, correct_streak: 0 };
 }
 
 function shuffle<T>(items: T[]): T[] {
@@ -186,50 +273,48 @@ export type SessionCounts = {
   due: number;
   news: number;
   sessionSize: number;
+  poolSize: number;
 };
 
-/** Counts for CTA: scheduled due + new fill (capped like a real session). */
+/** Counts for Quest CTA: all new/learning in folder, session capped at 10. */
 export function countSessionPool<T extends ReviewCard>(
   cards: T[],
   now: Date = new Date(),
 ): SessionCounts {
-  const due = cards.filter((card) => isScheduledDue(card, now)).length;
-  const news = cards.filter((card) => isNewCard(card)).length;
-  const newCap = due === 0 ? MAX_SESSION_SIZE : MAX_NEW_PER_SESSION;
-  const sessionSize = Math.min(MAX_SESSION_SIZE, due + Math.min(newCap, news));
+  const pool = cards.filter((card) => isQuestEligible(card));
+  const due = pool.filter((card) => isDue(card, now)).length;
+  const news = pool.filter((card) => isNewCard(card)).length;
+  const poolSize = pool.length;
+  const sessionSize = Math.min(MAX_SESSION_SIZE, poolSize);
 
-  return { due, news, sessionSize };
+  return { due, news, sessionSize, poolSize };
 }
 
 /**
- * Due-first session deck:
- * 1) shuffle scheduled-due cards (learning + decayed known)
- * 2) fill remaining slots with new cards (max MAX_NEW_PER_SESSION)
+ * Quest deck (new/learning only):
+ * 1) shuffle due (scheduled due + unscheduled new)
+ * 2) fill remaining slots from the rest of the pool (incl. ahead-of-schedule)
  */
-export function buildSessionDeck<T extends ReviewCard>(
+export function buildQuestDeck<T extends ReviewCard>(
   cards: T[],
-  options?: { maxSize?: number; maxNew?: number; now?: Date; shuffle?: boolean },
+  options?: { maxSize?: number; now?: Date; shuffle?: boolean },
 ): T[] {
   const maxSize = options?.maxSize ?? MAX_SESSION_SIZE;
-  const maxNew = options?.maxNew ?? MAX_NEW_PER_SESSION;
   const now = options?.now ?? new Date();
   const shouldShuffle = options?.shuffle !== false;
 
-  const scheduledDue = cards.filter((card) => isScheduledDue(card, now));
-  const newCards = cards.filter((card) => isNewCard(card));
+  const pool = cards.filter((card) => isQuestEligible(card));
+  const priority = pool.filter((card) => isDue(card, now));
+  const rest = pool.filter((card) => !isDue(card, now));
 
-  const dueOrdered = shouldShuffle ? shuffle(scheduledDue) : [...scheduledDue];
-  const newOrdered = shouldShuffle ? shuffle(newCards) : [...newCards];
+  const priorityOrdered = shouldShuffle ? shuffle(priority) : [...priority];
+  const restOrdered = shouldShuffle ? shuffle(rest) : [...rest];
 
-  const deck = dueOrdered.slice(0, maxSize);
+  const deck = priorityOrdered.slice(0, maxSize);
   const usedIds = new Set(deck.map((card) => card.id));
-  // When nothing is scheduled, allow a full session of new cards.
-  const newCap = dueOrdered.length === 0 ? maxSize : maxNew;
-  const newSlots = Math.min(maxSize - deck.length, newCap);
-  let newsAdded = 0;
 
-  for (const card of newOrdered) {
-    if (newsAdded >= newSlots) {
+  for (const card of restOrdered) {
+    if (deck.length >= maxSize) {
       break;
     }
     if (usedIds.has(card.id)) {
@@ -237,10 +322,17 @@ export function buildSessionDeck<T extends ReviewCard>(
     }
     deck.push(card);
     usedIds.add(card.id);
-    newsAdded += 1;
   }
 
   return deck;
+}
+
+/** @deprecated Use buildQuestDeck — kept as alias for older call sites. */
+export function buildSessionDeck<T extends ReviewCard>(
+  cards: T[],
+  options?: { maxSize?: number; maxNew?: number; now?: Date; shuffle?: boolean },
+): T[] {
+  return buildQuestDeck(cards, options);
 }
 
 /** Build multiple-choice meanings: correct + distractors from other cards. */

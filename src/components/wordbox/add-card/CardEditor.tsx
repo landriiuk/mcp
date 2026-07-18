@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Input } from "../../ui/Input";
+import type { Folder } from "../../../types/card";
 import { isReservedFolderName } from "../../../utils/routes";
 
 const MAX_TAGS = 3;
@@ -14,16 +15,17 @@ interface CardDraft {
   example: string;
   status: "new" | "learning" | "known";
   tags: string[];
+  /** Folder id */
   folder: string;
 }
 
 interface CardEditorProps {
   editingId?: string;
-  folders: string[];
+  folders: Folder[];
   preferredFolder?: string;
   onSubmit: (card: CardDraft) => void;
   onReset?: () => void;
-  onCreateFolder: (name: string) => Promise<string>;
+  onCreateFolder: (name: string) => Promise<Folder>;
 }
 
 function normalizeTag(value: string) {
@@ -52,15 +54,13 @@ function validateFolderName(value: string) {
   return null;
 }
 
-function getInitialFolder(folders: string[], preferredFolder?: string) {
+function getInitialFolder(folders: Folder[], preferredFolder?: string) {
   if (preferredFolder && preferredFolder !== "all") {
-    const match = folders.find(
-      (folder) => folder.toLowerCase() === preferredFolder.toLowerCase(),
-    );
+    const match = folders.find((folder) => folder.id === preferredFolder);
     // Always prefer the folder the user is currently viewing.
-    return match ?? preferredFolder;
+    return match?.id ?? preferredFolder;
   }
-  return folders[0] ?? NO_FOLDER_VALUE;
+  return folders[0]?.id ?? NO_FOLDER_VALUE;
 }
 
 export function CardEditor({
@@ -187,7 +187,7 @@ export function CardEditor({
 
     const normalizedName = normalizeFolderName(folderDraft);
     const existingFolder = folders.find(
-      (folder) => folder.toLowerCase() === normalizedName.toLowerCase(),
+      (folder) => folder.name.toLowerCase() === normalizedName.toLowerCase(),
     );
 
     if (existingFolder) {
@@ -199,8 +199,8 @@ export function CardEditor({
     setFolderError(null);
 
     try {
-      const createdName = await onCreateFolder(normalizedName);
-      setDraft((prev) => ({ ...prev, folder: createdName }));
+      const created = await onCreateFolder(normalizedName);
+      setDraft((prev) => ({ ...prev, folder: created.id }));
       setFolderDraft("");
       setFolderError(null);
     } catch (error) {
@@ -217,8 +217,48 @@ export function CardEditor({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    let folderId = draft.folder.trim();
+
+    // Empty-folder mode: typed name + Save word should create the folder (Create folder is easy to miss).
+    if (!hasFolders) {
+      const normalizedName = normalizeFolderName(folderDraft);
+      if (normalizedName) {
+        const validationError = validateFolderName(folderDraft);
+        if (validationError) {
+          setFolderError(validationError);
+          folderInputRef.current?.focus();
+          return;
+        }
+
+        const existingFolder = folders.find(
+          (folder) => folder.name.toLowerCase() === normalizedName.toLowerCase(),
+        );
+        if (existingFolder) {
+          folderId = existingFolder.id;
+        } else {
+          setIsSavingFolder(true);
+          setFolderError(null);
+          try {
+            const created = await onCreateFolder(normalizedName);
+            folderId = created.id;
+            setDraft((prev) => ({ ...prev, folder: created.id }));
+            setFolderDraft("");
+          } catch (error) {
+            setFolderError(
+              error instanceof Error ? error.message : "Could not create folder.",
+            );
+            folderInputRef.current?.focus();
+            setIsSavingFolder(false);
+            return;
+          }
+          setIsSavingFolder(false);
+        }
+      }
+    }
+
     const pending = normalizeTag(tagInput);
     const tags = [...draft.tags];
     if (
@@ -231,7 +271,7 @@ export function CardEditor({
     onSubmit({
       ...draft,
       status: "new",
-      folder: draft.folder.trim(),
+      folder: folderId,
       tags: tags.slice(0, MAX_TAGS),
     });
   };
@@ -301,7 +341,8 @@ export function CardEditor({
           {!hasFolders ? (
             <div className="folderInlineCreate">
               <p className="folderInlineHint">
-                Create a folder here, or save the word without one.
+                Type a folder name, then Create folder — or Save word to create it automatically.
+                Leave empty to save without a folder.
               </p>
               <Input
                 ref={folderInputRef}
@@ -333,8 +374,8 @@ export function CardEditor({
           ) : (
             <select name="folder" onChange={handleDraftChange} value={draft.folder}>
               {folders.map((folder) => (
-                <option key={folder} value={folder}>
-                  {folder}
+                <option key={folder.id} value={folder.id}>
+                  {folder.name}
                 </option>
               ))}
             </select>

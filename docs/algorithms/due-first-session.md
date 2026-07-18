@@ -1,85 +1,86 @@
-# Due-first learning session
+# Quest & Review sessions
 
-How InkLex builds a **Start Learning** session so spaced repetition actually drives what the user sees.
+How InkLex builds practice sessions so spaced repetition still prioritizes due words, without blocking the next Quest.
 
-Implementation: [`src/utils/reviewAlgorithm.ts`](../../src/utils/reviewAlgorithm.ts) — `isDue`, `isScheduledDue`, `isNewCard`, `buildSessionDeck`, `countSessionPool`.
+Implementation: [`src/utils/reviewAlgorithm.ts`](../../src/utils/reviewAlgorithm.ts) — `isDue`, `isScheduledDue`, `isNewCard`, `isQuestEligible`, `buildQuestDeck`, `countSessionPool`, `gradeCard`.
 
 ## Goals
 
-1. Prefer cards that are **due now** over farming ahead-of-schedule reviews.
-2. Still introduce **new** words without drowning a due backlog.
-3. Include **known** cards when their decay date has arrived (maintenance).
+1. Prefer cards that are **due now** when building a Quest deck.
+2. Still allow practice of **ahead-of-schedule** Cards/Learning so the user can start another Quest immediately.
+3. Exclude **Known** from Quest (they stay in Review / Known tab).
+4. Promote to Known after **3 correct in a row** (or manual drag / editor).
 
-## Card buckets
+## Learning entry
+
+- **All** folder: Start Learning opens a **folder picker** (modal). Direct `/learning` shows the same picker as page content. Learning always runs inside a concrete folder.
+- **Specific folder**: Start Learning → `/:encodedFolderId/learning` with **Learning Hub** as page content (Quest | Review), not a modal.
+- Preference for last mode: `localStorage` `inklex.learningMode` = `quest` | `review`.
+
+## Card buckets (Quest)
 
 | Bucket | Condition | Role |
 |--------|-----------|------|
-| Scheduled due | `next_review_at` present and `<= now` | Priority queue (learning or known) |
-| New / unscheduled | `status !== known` and `next_review_at == null` | Fill after due |
-| Ahead of schedule | `next_review_at > now`, not known | **Excluded** from Start Learning |
-| Legacy known | `status == known` and `next_review_at == null` | **Excluded** until they get a decay schedule |
+| Quest pool | `status` is `new` or `learning` | Eligible for Quest |
+| Due (priority) | In pool and (`next_review_at` null or `<= now`) | Taken first |
+| Ahead of schedule | In pool and `next_review_at > now` | Fill remaining slots |
+| Known | `status == known` | **Excluded** from Quest |
 
-`isDue(card)` = scheduled due **or** new/unscheduled.
-
-## Session build (`buildSessionDeck`)
+## Session build (`buildQuestDeck`)
 
 Constants:
 
 - `MAX_SESSION_SIZE = 10`
-- `MAX_NEW_PER_SESSION = 5`
+- `CORRECT_STREAK_TO_KNOWN = 3`
 
 Algorithm:
 
-1. Collect scheduled-due cards → shuffle → take up to 10.
-2. Remaining slots: fill from new/unscheduled.
-   - If there was **at least one** scheduled-due card → add at most **5** new.
-   - If the due list was **empty** → allow up to **10** new (full new-only session).
-3. Pass the deck into the learning UI queue.
+1. Filter folder cards to Quest pool (new/learning).
+2. Split into due vs rest → shuffle each.
+3. Take due first (up to 10), then fill from rest until 10.
+4. Pass the deck into the Quest UI queue.
 
 ```mermaid
 flowchart TD
-  pool[Folder cards] --> split{Split}
-  split --> due[Scheduled due]
-  split --> news[New unscheduled]
-  split --> skip[Ahead of schedule / legacy known]
+  pool[Folder new/learning] --> split{Split}
+  split --> due[Due priority]
+  split --> rest[Ahead of schedule]
   due --> shuffleDue[Shuffle]
-  news --> shuffleNew[Shuffle]
+  rest --> shuffleRest[Shuffle]
   shuffleDue --> takeDue[Take up to 10]
   takeDue --> fill{Slots left?}
-  fill -->|yes| addNew[Add new up to cap]
+  fill -->|yes| addRest[Add from rest]
   fill -->|no| deck[Session deck]
-  addNew --> deck
+  addRest --> deck
 ```
 
 ## CTA counts (`countSessionPool`)
 
-Shown on **Start Learning**:
+- `poolSize` = all new/learning in the folder
+- `sessionSize` = `min(10, poolSize)`
+- Quest is available whenever `sessionSize > 0` (not only when something is “due”)
 
-- Prefer label `Start Learning (N due)` when there is scheduled due.
-- Tooltip may show `N due · up to M new`.
-- If only new cards: `Start Learning (sessionSize)`.
-
-## Empty state
-
-If the due-first pool is empty:
-
-- Copy: **Nothing due now** (not “No cards due” when the issue is timing).
-- If the folder still has ahead-of-schedule learning cards, mention that reviews are in the future.
-
-## Related grading (not ordering, but schedule)
-
-Documented here so session behavior stays consistent with scheduling:
+## Grading → Known
 
 | Grade | Effect |
 |-------|--------|
-| Again | Soft demotion one Leitner step; `next_review_at = now + 10m`; status `learning` |
-| Good (learning) | `0 → 1d → 3d → 7d → known` with `interval_days = 30` |
+| Again | `correct_streak = 0`; soft demotion one Leitner step; `next_review_at = now + 10m`; status `learning` |
+| Good / Easy (not known) | `correct_streak += 1`; if `>= 3` → Known @ 30d; else stay `learning` with soft spacing intervals |
 | Good (known) | Extend maintenance interval `×1.5` (max 180d) |
+| Easy (known) | Extend maintenance interval `×2` (max 180d) |
 
-In-session: a wrong answer is **requeued once** at the end of the queue before it counts as “Needs work”.
+Manual drag to Known tab / editor status = Known still uses `reviewFieldsForStatus` (resets streak).
+
+In-session: a wrong / Again answer is **requeued once** at the end of the queue before it counts as “Needs work”.
+
+## Learning UI modes
+
+| Mode | Component | Pool | Input |
+|------|-----------|------|--------|
+| Quest | `LearningSession` | new/learning, max 10, due-first then rest | MCQ meanings (correct→good, wrong→again) |
+| Review | `ReviewSession` | **All words in the active folder** (no max 10) | Flip reveal + Again / Good / Easy |
 
 ## Out of scope
 
 - Full SM-2 / ease factor
 - Typed recall (separate learning module)
-- “Practice more” for ahead-of-schedule cards (optional future CTA)

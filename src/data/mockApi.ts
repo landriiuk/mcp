@@ -1,19 +1,12 @@
-import {
-  collection,
-  doc,
-  getDocs,
-  getDoc,
-  setDoc,
-  deleteDoc,
-  writeBatch,
-  type DocumentData,
-} from "firebase/firestore";
-import { getDb } from "../lib/firebase";
 import type { Card, CardStatus, Draft, Folder } from "../types/card";
 import { reviewFieldsForStatus } from "../utils/reviewAlgorithm";
 
-const WORDS = "words";
-const FOLDERS = "folders";
+const STORAGE_KEY = "inklex.mock.v1";
+
+type MockState = {
+  folders: Folder[];
+  words: Array<Card & { created_at: string; updated_at: string }>;
+};
 
 function nowIso() {
   return new Date().toISOString();
@@ -23,103 +16,50 @@ function createId() {
   return crypto.randomUUID();
 }
 
-function normalizeCard(id: string, data: DocumentData): Card {
-  const status = (["new", "learning", "known"].includes(data.status)
-    ? data.status
-    : "new") as CardStatus;
-  const tags = Array.isArray(data.tags)
-    ? data.tags.filter((tag: unknown): tag is string => typeof tag === "string")
-    : typeof data.tags === "string"
-      ? data.tags
-          .split(",")
-          .map((tag: string) => tag.trim())
-          .filter(Boolean)
-      : [];
-
-  return {
-    id,
-    word: String(data.word ?? ""),
-    meaning: String(data.meaning ?? ""),
-    example: String(data.example ?? ""),
-    status,
-    tags: tags.slice(0, 3),
-    folder: String(data.folder ?? "").trim(),
-    interval_days: Number(data.interval_days) || 0,
-    next_review_at:
-      data.next_review_at === undefined || data.next_review_at === null
-        ? null
-        : String(data.next_review_at),
-    correct_streak: Number(data.correct_streak) || 0,
-  };
+function emptyState(): MockState {
+  return { folders: [], words: [] };
 }
 
-function cardToDoc(card: Omit<Card, "id"> & { created_at?: string; updated_at?: string }) {
-  return {
-    word: card.word,
-    meaning: card.meaning,
-    example: card.example,
-    status: card.status,
-    tags: card.tags,
-    folder: card.folder,
-    interval_days: card.interval_days,
-    next_review_at: card.next_review_at,
-    correct_streak: Number(card.correct_streak) || 0,
-    created_at: card.created_at ?? nowIso(),
-    updated_at: card.updated_at ?? nowIso(),
-  };
+function readState(): MockState {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      return emptyState();
+    }
+    const parsed = JSON.parse(raw) as MockState;
+    return {
+      folders: Array.isArray(parsed.folders) ? parsed.folders : [],
+      words: Array.isArray(parsed.words) ? parsed.words : [],
+    };
+  } catch {
+    return emptyState();
+  }
 }
 
-async function commitInChunks(
-  build: (push: (fn: (batch: ReturnType<typeof writeBatch>) => void) => void) => void,
-) {
-  const db = getDb();
-  let batch = writeBatch(db);
-  let ops = 0;
+function writeState(state: MockState) {
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
 
-  async function flush() {
-    if (ops === 0) {
-      return;
-    }
-    await batch.commit();
-    batch = writeBatch(db);
-    ops = 0;
-  }
-
-  const queued: Array<(batch: ReturnType<typeof writeBatch>) => void> = [];
-  build((fn) => {
-    queued.push(fn);
-  });
-
-  for (const fn of queued) {
-    fn(batch);
-    ops += 1;
-    if (ops >= 400) {
-      await flush();
-    }
-  }
-
-  await flush();
+function mutate(updater: (state: MockState) => void) {
+  const state = readState();
+  updater(state);
+  writeState(state);
+  return state;
 }
 
 export async function listWords(): Promise<Card[]> {
-  const snapshot = await getDocs(collection(getDb(), WORDS));
-  return snapshot.docs
-    .map((entry) => normalizeCard(entry.id, entry.data()))
+  return readState()
+    .words.map(({ created_at: _c, updated_at: _u, ...card }) => ({
+      ...card,
+      correct_streak: Number(card.correct_streak) || 0,
+    }))
     .sort((a, b) => a.word.localeCompare(b.word));
 }
 
 export async function listFolders(): Promise<Folder[]> {
-  const snapshot = await getDocs(collection(getDb(), FOLDERS));
-  return snapshot.docs
-    .map((entry) => {
-      const name = String(entry.data().name ?? entry.id).trim();
-      return { id: entry.id, name: name || entry.id };
-    })
-    .filter((folder) => folder.name)
-    .sort((a, b) => a.name.localeCompare(b.name));
+  return [...readState().folders].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** Resolve folder by display name; create with UUID id if missing. Returns folder id. */
 export async function ensureFolderByName(name: string): Promise<string> {
   const normalized = name.trim();
   if (!normalized) {
@@ -135,9 +75,8 @@ export async function ensureFolderByName(name: string): Promise<string> {
   }
 
   const id = createId();
-  await setDoc(doc(getDb(), FOLDERS, id), {
-    name: normalized,
-    updated_at: nowIso(),
+  mutate((state) => {
+    state.folders.push({ id, name: normalized });
   });
   return id;
 }
@@ -159,12 +98,11 @@ export async function createFolder(name: string): Promise<Folder> {
     throw new Error("Folder already exists.");
   }
 
-  const id = createId();
-  await setDoc(doc(getDb(), FOLDERS, id), {
-    name: normalized,
-    updated_at: nowIso(),
+  const folder = { id: createId(), name: normalized };
+  mutate((state) => {
+    state.folders.push(folder);
   });
-  return { id, name: normalized };
+  return folder;
 }
 
 export async function renameFolder(folderId: string, newName: string): Promise<void> {
@@ -186,17 +124,19 @@ export async function renameFolder(folderId: string, newName: string): Promise<v
     throw new Error("Folder already exists.");
   }
 
-  const folderRef = doc(getDb(), FOLDERS, folderId);
-  const snapshot = await getDoc(folderRef);
-  if (!snapshot.exists()) {
+  let found = false;
+  mutate((state) => {
+    const folder = state.folders.find((entry) => entry.id === folderId);
+    if (!folder) {
+      return;
+    }
+    found = true;
+    folder.name = normalized;
+  });
+
+  if (!found) {
     throw new Error("Folder not found.");
   }
-
-  await setDoc(
-    folderRef,
-    { name: normalized, updated_at: nowIso() },
-    { merge: true },
-  );
 }
 
 export async function deleteFolderDoc(folderId: string): Promise<void> {
@@ -205,32 +145,19 @@ export async function deleteFolderDoc(folderId: string): Promise<void> {
     throw new Error("Folder id is required.");
   }
 
-  const db = getDb();
-  const folderSnap = await getDoc(doc(db, FOLDERS, normalized));
-  const legacyName = folderSnap.exists()
-    ? String(folderSnap.data()?.name ?? normalized).trim()
-    : normalized;
-  const wordsSnap = await getDocs(collection(db, WORDS));
-
-  await commitInChunks((queue) => {
-    for (const wordDoc of wordsSnap.docs) {
-      const cardFolder = String(wordDoc.data().folder ?? "").trim();
-      if (cardFolder === normalized || cardFolder === legacyName) {
-        queue((batch) => {
-          batch.update(wordDoc.ref, { folder: "", updated_at: nowIso() });
-        });
+  mutate((state) => {
+    const folder = state.folders.find((entry) => entry.id === normalized);
+    const legacyName = folder?.name ?? normalized;
+    state.folders = state.folders.filter((entry) => entry.id !== normalized);
+    for (const word of state.words) {
+      if (word.folder === normalized || word.folder === legacyName) {
+        word.folder = "";
+        word.updated_at = nowIso();
       }
     }
-    queue((batch) => {
-      batch.delete(doc(db, FOLDERS, normalized));
-    });
   });
 }
 
-/**
- * Remap legacy cards that store folder display name → folder id.
- * Returns updated cards (and persists remaps).
- */
 export async function reconcileCardFolderIds(
   cards: Card[],
   folders: Folder[],
@@ -244,25 +171,22 @@ export async function reconcileCardFolderIds(
     if (!ref || byId.has(ref)) {
       return card;
     }
-
     const named = byName.get(ref.toLowerCase());
     if (!named) {
       return card;
     }
-
     updates.push({ id: card.id, folderId: named.id });
     return { ...card, folder: named.id };
   });
 
   if (updates.length > 0) {
-    await commitInChunks((queue) => {
+    mutate((state) => {
       for (const update of updates) {
-        queue((batch) => {
-          batch.update(doc(getDb(), WORDS, update.id), {
-            folder: update.folderId,
-            updated_at: nowIso(),
-          });
-        });
+        const word = state.words.find((entry) => entry.id === update.id);
+        if (word) {
+          word.folder = update.folderId;
+          word.updated_at = nowIso();
+        }
       }
     });
   }
@@ -270,16 +194,13 @@ export async function reconcileCardFolderIds(
   return nextCards;
 }
 
-/**
- * Remove legacy system folder "General" and clear it from cards.
- * Safe to call on every load.
- */
 export async function purgeLegacyGeneralFolder(): Promise<{
   folders: Folder[];
   cards: Card[];
   removed: boolean;
 }> {
-  const [folders, cards] = await Promise.all([listFolders(), listWords()]);
+  const folders = await listFolders();
+  const cards = await listWords();
   const generalFolders = folders.filter(
     (folder) =>
       folder.id === "General" || folder.name.trim().toLowerCase() === "general",
@@ -296,43 +217,28 @@ export async function purgeLegacyGeneralFolder(): Promise<{
     return { folders, cards, removed: false };
   }
 
-  const db = getDb();
-  const wordsSnap = await getDocs(collection(db, WORDS));
-
-  await commitInChunks((queue) => {
-    for (const wordDoc of wordsSnap.docs) {
-      const cardFolder = String(wordDoc.data().folder ?? "").trim();
-      const isGeneralRef =
-        cardFolder === "General" ||
-        generalIds.has(cardFolder) ||
-        cardFolder.toLowerCase() === "general";
-      if (isGeneralRef) {
-        queue((batch) => {
-          batch.update(wordDoc.ref, { folder: "", updated_at: nowIso() });
-        });
+  mutate((state) => {
+    state.folders = state.folders.filter((folder) => !generalIds.has(folder.id));
+    for (const word of state.words) {
+      const ref = word.folder.trim();
+      if (ref === "General" || generalIds.has(ref) || ref.toLowerCase() === "general") {
+        word.folder = "";
+        word.updated_at = nowIso();
       }
     }
-    for (const folder of generalFolders) {
-      queue((batch) => {
-        batch.delete(doc(db, FOLDERS, folder.id));
-      });
-    }
   });
 
-  const nextFolders = folders.filter((folder) => !generalIds.has(folder.id));
-  const nextCards = cards.map((card) => {
-    const ref = card.folder.trim();
-    if (
-      ref === "General" ||
-      generalIds.has(ref) ||
-      ref.toLowerCase() === "general"
-    ) {
-      return { ...card, folder: "" };
-    }
-    return card;
-  });
-
-  return { folders: nextFolders, cards: nextCards, removed: true };
+  return {
+    folders: (await listFolders()).filter((folder) => !generalIds.has(folder.id)),
+    cards: (await listWords()).map((card) => {
+      const ref = card.folder.trim();
+      if (ref === "General" || generalIds.has(ref) || ref.toLowerCase() === "general") {
+        return { ...card, folder: "" };
+      }
+      return card;
+    }),
+    removed: true,
+  };
 }
 
 export async function createWord(draft: Draft & Partial<Card>): Promise<Card> {
@@ -357,7 +263,9 @@ export async function createWord(draft: Draft & Partial<Card>): Promise<Card> {
         : review.correct_streak,
   };
 
-  await setDoc(doc(getDb(), WORDS, id), cardToDoc({ ...card, created_at, updated_at: created_at }));
+  mutate((state) => {
+    state.words.unshift({ ...card, created_at, updated_at: created_at });
+  });
   return card;
 }
 
@@ -374,21 +282,24 @@ export async function saveWord(card: Card): Promise<Card> {
     correct_streak: Number(card.correct_streak) || 0,
   };
 
-  const existing = await getDoc(doc(getDb(), WORDS, card.id));
-  const created_at = existing.exists()
-    ? String(existing.data()?.created_at ?? nowIso())
-    : nowIso();
+  mutate((state) => {
+    const index = state.words.findIndex((entry) => entry.id === card.id);
+    const created_at = index >= 0 ? state.words[index].created_at : nowIso();
+    const stored = { ...next, created_at, updated_at: nowIso() };
+    if (index >= 0) {
+      state.words[index] = stored;
+    } else {
+      state.words.unshift(stored);
+    }
+  });
 
-  await setDoc(
-    doc(getDb(), WORDS, card.id),
-    cardToDoc({ ...next, created_at, updated_at: nowIso() }),
-    { merge: true },
-  );
   return next;
 }
 
 export async function deleteWord(id: string): Promise<void> {
-  await deleteDoc(doc(getDb(), WORDS, id));
+  mutate((state) => {
+    state.words = state.words.filter((entry) => entry.id !== id);
+  });
 }
 
 export type ImportInput = {
@@ -446,15 +357,10 @@ export async function importWords(rows: ImportInput[]): Promise<{
     });
   }
 
-  await commitInChunks((queue) => {
+  mutate((state) => {
+    const stamp = nowIso();
     for (const card of created) {
-      const created_at = nowIso();
-      queue((batch) => {
-        batch.set(
-          doc(getDb(), WORDS, card.id),
-          cardToDoc({ ...card, created_at, updated_at: created_at }),
-        );
-      });
+      state.words.unshift({ ...card, created_at: stamp, updated_at: stamp });
     }
   });
 
@@ -474,4 +380,9 @@ export async function importWords(rows: ImportInput[]): Promise<{
     errors,
     targetFolderId: ranked[0]?.[0] ?? "",
   };
+}
+
+/** Wipe local mock DB (browser only). */
+export function clearMockDatabase() {
+  window.localStorage.removeItem(STORAGE_KEY);
 }
