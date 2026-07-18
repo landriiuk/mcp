@@ -15,16 +15,20 @@ Vocabulary app (InkLex): word cards, folders, statuses `new` | `learning` | `kno
 
 - Frontend: React + Vite + TS → `src/`
 - Data: Firebase Firestore (client SDK) — collections `words`, `folders`
+- **Local DB:** mocked `localStorage` (`VITE_USE_MOCK_DB=true`). No Firebase/emulator network.
+- **Prod/Preview:** real `VITE_FIREBASE_*` on Vercel; mock/emulator flags must be off
 - Legacy Next API in `backend/` is optional / deprecated for local experiments
-- Env: `VITE_FIREBASE_*` (see `.env.example`)
+- Env: see `.env.example`
 
 ## UX (critical)
 
 - Sidebar: **All** + **+**; no folder bullets; inline create/rename; name limit **50** chars; errors **below input**; Esc / blur = cancel
+- Mobile: burger → folder drawer (backdrop / Esc / × close)
 - Content: **Cards / Learning / Known** tabs above search (counts scoped to active folder)
-- **Start Learning** → `/learning` or `/:folder/learning` (due-first, до 10 слів; див. `docs/algorithms/due-first-session.md`)
-- Folder URL: `/` (All) or `/:folderName`
+- **Start Learning**: з All — модал вибору папки; з папки → `/:encodedFolderId/learning` з Learning Hub (контент сторінки: Quest | Review). Quest: new/learning ≤10 (due first, потім rest); Known після 3 correct або drag; `inklex.learningMode`; див. `docs/algorithms/due-first-session.md`
+- Folder URL: `/` (All) or `/:encodedFolderId` (base64url folder id; sidebar shows name)
 - Card: red **delete** chip on the right
+- Drag card → folder (sidebar) or tab (Cards=`new` / Learning / Known)
 - Import: on success → close modal + open folder from CSV
 
 ## Code

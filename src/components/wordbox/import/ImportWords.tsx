@@ -75,7 +75,12 @@ export function ImportWords({ onClose, onImport, onImportSuccess }: ImportWordsP
         setParseErrors(response.errors);
       }
     } catch (error) {
-      setImportError("Could not import words. Try again.");
+      const detail =
+        error instanceof Error && error.message.trim()
+          ? error.message.trim()
+          : "Could not import words. Try again.";
+      console.error("[InkLex] import failed", error);
+      setImportError(detail);
     } finally {
       setIsImporting(false);
     }

@@ -19,7 +19,7 @@ const Card: React.FC<CardProps> = ({
         <div className={styles.cardImage}>
           <img
             src={imageSrc}
-            alt={imageAlt ?? title ?? "card image"}
+            alt={imageAlt ?? (typeof title === "string" ? title : "card image")}
             className={styles.cardImageElement}
           />
         </div>

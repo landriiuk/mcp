@@ -9,6 +9,12 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_STORAGE_BUCKET?: string;
   readonly VITE_FIREBASE_MESSAGING_SENDER_ID?: string;
   readonly VITE_FIREBASE_APP_ID?: string;
+  /** Local only — localStorage mock DB. Never set on Vercel. */
+  readonly VITE_USE_MOCK_DB?: string;
+  /** Local only — Firestore emulator (ignored when mock is on). Never set on Vercel. */
+  readonly VITE_USE_FIREBASE_EMULATOR?: string;
+  readonly VITE_FIRESTORE_EMULATOR_HOST?: string;
+  readonly VITE_FIRESTORE_EMULATOR_PORT?: string;
 }
 
 interface ImportMeta {

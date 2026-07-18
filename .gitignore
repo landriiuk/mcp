@@ -119,6 +119,19 @@ dist
 # Firebase cache directory
 .firebase/
 
+# Local Firestore emulator data (never commit — machine-only)
+.firebase-data/
+.firebaserc
+firestore-debug.log
+firebase-debug.log
+ui-debug.log
+pubsub-debug.log
+database-debug.log
+
+# Personal / local CSV imports (not product code)
+inklex-import.csv
+*-import.csv
+
 # TernJS port file
 .tern-port
 

@@ -1,12 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  clearJsonSession,
+  loadJsonSession,
+  saveJsonSession,
+} from "../../lib/sessionPersist";
+import {
   buildMeaningOptions,
-  buildSessionDeck,
+  buildQuestDeck,
   MAX_SESSION_RETRIES,
   MAX_SESSION_SIZE,
   type ReviewGrade,
 } from "../../utils/reviewAlgorithm";
 import type { WordboxCard } from "./types";
+import { PronounceButton } from "./PronounceButton";
+
+const QUEST_SESSION_KEY = "inklex.questSession";
 
 function shuffleCards<T>(items: T[]): T[] {
   const copy = [...items];
@@ -40,11 +48,16 @@ type PersistedLearningSession = {
   skippedCards: WordboxCard[];
 };
 
-/** Survives LearningSession remounts (StrictMode / parent re-render) so results are not wiped. */
+/** Survives remounts + page reload (sessionStorage) so the deck stays the same. */
 let persistedLearningSession: PersistedLearningSession | null = null;
+
+function readPersistedLearningSession(): PersistedLearningSession | null {
+  return persistedLearningSession ?? loadJsonSession<PersistedLearningSession>(QUEST_SESSION_KEY);
+}
 
 export function clearPersistedLearningSession() {
   persistedLearningSession = null;
+  clearJsonSession(QUEST_SESSION_KEY);
 }
 
 type LearningSessionProps = {
@@ -52,6 +65,7 @@ type LearningSessionProps = {
   optionPool: WordboxCard[];
   sessionScope: string;
   onReviewGrade: (cardId: string, grade: ReviewGrade) => void | Promise<void>;
+  onExitLearning: () => void;
   hasAheadOfSchedule: boolean;
 };
 
@@ -60,7 +74,8 @@ export function LearningSession({
   optionPool,
   sessionScope,
   onReviewGrade,
-  hasAheadOfSchedule,
+  onExitLearning,
+  hasAheadOfSchedule: _hasAheadOfSchedule,
 }: LearningSessionProps) {
   const [sessionIndex, setSessionIndex] = useState(0);
   const [sessionQueue, setSessionQueue] = useState<WordboxCard[]>([]);
@@ -100,7 +115,7 @@ export function LearningSession({
     if (deck.length === 0 && !(overrides.results?.length || sessionResultsRef.current.length)) {
       return;
     }
-    persistedLearningSession = {
+    const snapshot: PersistedLearningSession = {
       scope: sessionScope,
       deck,
       queue: overrides.queue ?? sessionQueueRef.current,
@@ -113,6 +128,8 @@ export function LearningSession({
       endedEarly: overrides.endedEarly ?? endedEarly,
       skippedCards: overrides.skippedCards ?? skippedCards,
     };
+    persistedLearningSession = snapshot;
+    saveJsonSession(QUEST_SESSION_KEY, snapshot);
   }
 
   function restorePersisted(snapshot: PersistedLearningSession) {
@@ -155,7 +172,7 @@ export function LearningSession({
       ? shouldShuffle
         ? shuffleCards(nextCards).slice(0, MAX_SESSION_SIZE)
         : nextCards.slice(0, MAX_SESSION_SIZE)
-      : buildSessionDeck(nextCards, { shuffle: shouldShuffle });
+      : buildQuestDeck(nextCards, { shuffle: shouldShuffle });
     sessionLockedRef.current = deck.length > 0;
     sessionTotalRef.current = deck.length;
     sessionResultsRef.current = [];
@@ -205,17 +222,20 @@ export function LearningSession({
   }
 
   useEffect(() => {
-    // Remount recovery: keep answered cards after parent re-render / StrictMode.
+    function tryRestore(): boolean {
+      const snapshot = readPersistedLearningSession();
+      if (snapshot && snapshot.scope === sessionScope && snapshot.deck.length > 0) {
+        persistedLearningSession = snapshot;
+        restorePersisted(snapshot);
+        return true;
+      }
+      return false;
+    }
+
+    // Remount / reload recovery: keep the same deck + progress.
     if (!restoredRef.current) {
       restoredRef.current = true;
-      const snapshot = persistedLearningSession;
-      if (
-        snapshot &&
-        snapshot.scope === sessionScope &&
-        snapshot.deck.length > 0 &&
-        (snapshot.results.length > 0 || snapshot.answeredCount > 0 || snapshot.progressCurrent > 1)
-      ) {
-        restorePersisted(snapshot);
+      if (tryRestore()) {
         return;
       }
     }
@@ -224,35 +244,25 @@ export function LearningSession({
 
     if (scopeChanged) {
       activeSessionScopeRef.current = sessionScope;
-      // Real folder/scope switch — only force-seed when we are not mid-answer progress
-      // for this same remounted scope (handled above).
+      if (tryRestore()) {
+        return;
+      }
+      // Different scope (or first visit) — drop a stale other-folder session.
+      clearPersistedLearningSession();
       sessionLockedRef.current = false;
       if (cards.length > 0) {
         seedSession(cards, { force: true });
-      } else {
-        sessionTotalRef.current = 0;
-        sessionResultsRef.current = [];
-        sessionQueueRef.current = [];
-        setSessionDeck([]);
-        setSessionQueue([]);
-        setSessionTotal(0);
-        answeredCountRef.current = 0;
-        setAnsweredCount(0);
-        progressCurrentRef.current = 0;
-        setProgressCurrent(0);
-        setSessionResults([]);
-        retryCountsRef.current = {};
-        setRetryCounts({});
-        setSkippedCards([]);
-        setEndedEarly(false);
-        clearPersistedLearningSession();
       }
+      // Cards may still be loading — wait; do not seed an empty deck.
       return;
     }
 
     // Recover only when this scope never got a deck (e.g. /learning before data loaded).
     // Do NOT reseed when the due pool shrinks after each grade — that reset progress to 1/N.
     if (!sessionLockedRef.current && cards.length > 0) {
+      if (tryRestore()) {
+        return;
+      }
       seedSession(cards);
     }
   }, [sessionScope, cards]);
@@ -300,10 +310,9 @@ export function LearningSession({
     sessionDeck.length > 0 &&
     (answeredCount > 0 || isEarlyExit);
 
-  // Skip only before every deck card has been attempted — otherwise 2/2 can loop forever.
+  // Skip while there are still unattempted cards; last card in queue ends the session.
   const canSkip =
     Boolean(currentCard) &&
-    sessionQueue.length > 1 &&
     !isGrading &&
     choiceState === "idle" &&
     sessionResults.length < sessionDeck.length;
@@ -316,6 +325,13 @@ export function LearningSession({
 
   const knownWell = sessionResults.filter((result) => result.correct);
   const needsWork = sessionResults.filter((result) => !result.correct);
+  const isPerfectSession =
+    isSessionComplete &&
+    !isEarlyExit &&
+    needsWork.length === 0 &&
+    knownWell.length > 0 &&
+    knownWell.length === sessionDeck.length;
+
 
   const meaningOptions = useMemo(() => {
     if (!currentCard) {
@@ -387,9 +403,14 @@ export function LearningSession({
         const alreadyRecorded = sessionResultsRef.current.some(
           (entry) => entry.card.id === cardId,
         );
-        // One wrong→requeue only; never requeue a card already in results.
+        const progressBefore = progressCurrentRef.current;
+        const atSessionBudget = progressBefore >= sessionTotalRef.current;
+        // One wrong→requeue only; never past the last N/N slot.
         const shouldRequeue =
-          !isCorrect && priorRetries < MAX_SESSION_RETRIES && !alreadyRecorded;
+          !isCorrect &&
+          priorRetries < MAX_SESSION_RETRIES &&
+          !alreadyRecorded &&
+          !atSessionBudget;
 
         if (shouldRequeue) {
           // Keep the wrong attempt in summary if the user ends before the retry.
@@ -448,6 +469,32 @@ export function LearningSession({
           });
         }
 
+        // Last slot (N/N) answered — force summary even if retries remain in queue.
+        if (atSessionBudget) {
+          const results = sessionResultsRef.current;
+          const answeredIds = new Set(results.map((entry) => entry.card.id));
+          const leftover = sessionQueueRef.current.filter(
+            (card) => !answeredIds.has(card.id),
+          );
+          sessionQueueRef.current = [];
+          setSessionQueue([]);
+          if (leftover.length === 0) {
+            setSkippedCards([]);
+            setEndedEarly(false);
+          } else {
+            setSkippedCards(leftover);
+            setEndedEarly(true);
+          }
+          persistSnapshot({
+            results,
+            queue: [],
+            answeredCount: answeredCountRef.current,
+            progressCurrent: progressCurrentRef.current,
+            skippedCards: leftover,
+            endedEarly: leftover.length > 0,
+          });
+        }
+
         resetChoice();
 
         window.setTimeout(() => {
@@ -461,6 +508,16 @@ export function LearningSession({
 
   function handleSkip() {
     if (!currentCard || !canSkip) {
+      return;
+    }
+
+    // Session budget done (N/N) or sole card left — skip finishes the quest.
+    // Skipped cards are re-queued, so queueLen stays > 1 even on the last slot.
+    if (
+      sessionQueueRef.current.length <= 1 ||
+      progressCurrentRef.current >= sessionTotalRef.current
+    ) {
+      handleEndEarly();
       return;
     }
 
@@ -575,6 +632,9 @@ export function LearningSession({
             </div>
           ) : currentCard ? (
             <article className="reviewCard">
+              <div className="reviewCardPronounce">
+                <PronounceButton word={currentCard.word} compact />
+              </div>
               <p className="reviewWord">{currentCard.word}</p>
 
               {currentCard.example ? (
@@ -637,7 +697,7 @@ export function LearningSession({
                   onClick={handleSkip}
                   title={
                     sessionQueue.length <= 1
-                      ? "Last card — answer it or end the session"
+                      ? "Last card — skip to finish the quest"
                       : "Move this word to the end of the session"
                   }
                   type="button"
@@ -655,6 +715,34 @@ export function LearningSession({
               </div>
             </article>
           ) : isSessionComplete ? (
+            isPerfectSession ? (
+              <div className="sessionSuccess" role="status" aria-live="polite">
+                <p className="sessionSuccessBadge">Quest complete</p>
+                <h2>Perfect run</h2>
+                <p className="sessionSuccessScore">
+                  {knownWell.length} / {sessionDeck.length}
+                </p>
+                <p className="sessionSummaryLead">
+                  Every word in this session is marked ok. Nice work — head back to your cards whenever you like.
+                </p>
+                <ul className="sessionSuccessWords" aria-label="Words you mastered this round">
+                  {knownWell.map(({ card }) => (
+                    <li key={`perfect-${card.id}`}>
+                      <strong>{card.word}</strong>
+                      <span>{card.meaning}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="sessionSummaryActions">
+                  <button className="primary" onClick={onExitLearning} type="button">
+                    Back to cards
+                  </button>
+                  <button className="ghost" onClick={() => restartSession(true)} type="button">
+                    Shuffle &amp; repeat
+                  </button>
+                </div>
+              </div>
+            ) : (
             <div className="sessionSummary">
               <h2>{isEarlyExit ? "Session ended early" : "Session complete"}</h2>
               <p className="sessionSummaryLead">
@@ -728,15 +816,18 @@ export function LearningSession({
                 >
                   Shuffle &amp; repeat
                 </button>
+                <button className="ghost" onClick={onExitLearning} type="button">
+                  Back to cards
+                </button>
               </div>
             </div>
+            )
           ) : (
             <div className="emptyState">
-              <h2>Nothing due now</h2>
+              <h2>No Cards or Learning words</h2>
               <p>
-                {hasAheadOfSchedule
-                  ? "All scheduled reviews are in the future. Check back later or add new words."
-                  : "Nothing to review right now. Add new words to start practicing."}
+                Quest uses words from the Cards and Learning tabs. Add new words or move some
+                out of Known to practice again.
               </p>
             </div>
           )}
@@ -746,15 +837,20 @@ export function LearningSession({
               <aside className="learningTips" aria-label="How spaced review works">
                 <h2>How it works</h2>
                 <ul>
-                  <li>Sessions prioritize due cards, then add a few new ones (max 10).</li>
                   <li>
-                    <strong>Skip</strong> goes to the next word and advances the counter; skipped words return at the end.
+                    Up to 10 Cards/Learning words: due first, then the rest of the folder pool.
                   </li>
                   <li>
-                    <strong>End session</strong> stops early; you can finish remaining words later.
+                    <strong>Skip</strong> goes to the next word and advances the counter; skipped
+                    words return at the end.
                   </li>
                   <li>
-                    <strong>Wrong</strong> steps one level down and repeats once in this session.
+                    <strong>End session</strong> stops early; start another quest anytime from the
+                    hub.
+                  </li>
+                  <li>
+                    <strong>Wrong</strong> resets your streak and repeats once in this session. 3
+                    correct in a row → Known.
                   </li>
                 </ul>
               </aside>

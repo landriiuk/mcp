@@ -88,7 +88,7 @@ function rowFromValues(values: string[], columnMap: Record<string, number>): Imp
     example: read("example"),
     status: mapStatus(read("status")),
     tags: read("tags"),
-    folder: read("folder") || "General",
+    folder: read("folder") || "",
   };
 }
 
@@ -155,16 +155,20 @@ export function parseWordsTable(content: string): ParsedImportResult {
 
 export function getImportTargetFolder(rows: ImportWordRow[]): string {
   if (rows.length === 0) {
-    return "General";
+    return "";
   }
 
   const folderCounts = rows.reduce<Record<string, number>>((accumulator, row) => {
-    const folder = row.folder.trim() || "General";
+    const folder = row.folder.trim();
+    if (!folder) {
+      return accumulator;
+    }
     accumulator[folder] = (accumulator[folder] ?? 0) + 1;
     return accumulator;
   }, {});
 
-  return Object.entries(folderCounts).sort((left, right) => right[1] - left[1])[0][0];
+  const ranked = Object.entries(folderCounts).sort((left, right) => right[1] - left[1]);
+  return ranked[0]?.[0] ?? "";
 }
 
 export function downloadImportTemplate() {

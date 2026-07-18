@@ -106,7 +106,7 @@ function createInMemoryDb() {
               example,
               status,
               tags,
-              folder: typeof folder === 'string' ? folder : folder || 'General',
+              folder: typeof folder === 'string' ? folder : folder || '',
               interval_days: Number(interval_days) || 0,
               next_review_at: next_review_at ?? null,
               created_at: created_at || nowISO(),
@@ -141,7 +141,7 @@ function createInMemoryDb() {
               example,
               status,
               tags,
-              folder: typeof folder === 'string' ? folder : folder || 'General',
+              folder: typeof folder === 'string' ? folder : folder || '',
               interval_days: Number(interval_days) || 0,
               next_review_at: next_review_at ?? null,
               updated_at: updated_at || nowISO(),
@@ -285,7 +285,7 @@ if (forceLocal) {
         example TEXT,
         status TEXT NOT NULL,
         tags TEXT,
-        folder TEXT NOT NULL DEFAULT 'General',
+        folder TEXT NOT NULL DEFAULT '',
         created_at TIMESTAMPTZ NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL
       )
@@ -293,8 +293,12 @@ if (forceLocal) {
 
     await pool.query(`
       ALTER TABLE words
-      ADD COLUMN IF NOT EXISTS folder TEXT NOT NULL DEFAULT 'General'
+      ADD COLUMN IF NOT EXISTS folder TEXT NOT NULL DEFAULT ''
     `)
+
+    // Drop legacy system folder if it still exists.
+    await pool.query(`DELETE FROM folders WHERE name = 'General'`)
+    await pool.query(`UPDATE words SET folder = '' WHERE folder = 'General'`)
 
     await pool.query(`
       ALTER TABLE words

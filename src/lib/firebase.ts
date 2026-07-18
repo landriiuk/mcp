@@ -1,5 +1,21 @@
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
-import { getFirestore, type Firestore } from "firebase/firestore";
+import {
+  connectFirestoreEmulator,
+  getFirestore,
+  type Firestore,
+} from "firebase/firestore";
+import {
+  isDataStoreConfigured,
+  useFirestoreEmulator,
+  useMockDb,
+} from "./dataMode";
+
+export {
+  isDataStoreConfigured,
+  isFirebaseConfigured,
+  useFirestoreEmulator,
+  useMockDb,
+} from "./dataMode";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -10,21 +26,24 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-export function isFirebaseConfigured(): boolean {
-  return Boolean(
-    firebaseConfig.apiKey &&
-      firebaseConfig.projectId &&
-      firebaseConfig.appId,
-  );
-}
-
 let app: FirebaseApp | null = null;
 let db: Firestore | null = null;
+let emulatorConnected = false;
 
 export function getFirebaseApp(): FirebaseApp {
-  if (!isFirebaseConfigured()) {
+  if (useMockDb()) {
+    throw new Error("Mock DB is enabled — Firebase must not be initialized.");
+  }
+
+  if (!isDataStoreConfigured()) {
     throw new Error(
       "Firebase is not configured. Set VITE_FIREBASE_* in .env (see .env.example).",
+    );
+  }
+
+  if (useFirestoreEmulator() && import.meta.env.PROD) {
+    throw new Error(
+      "VITE_USE_FIREBASE_EMULATOR must not be enabled in production builds.",
     );
   }
 
@@ -36,8 +55,26 @@ export function getFirebaseApp(): FirebaseApp {
 }
 
 export function getDb(): Firestore {
+  if (useMockDb()) {
+    throw new Error("Mock DB is enabled — Firestore must not be used.");
+  }
+
   if (!db) {
     db = getFirestore(getFirebaseApp());
+
+    if (useFirestoreEmulator() && !emulatorConnected) {
+      const host = import.meta.env.VITE_FIRESTORE_EMULATOR_HOST || "127.0.0.1";
+      const port = Number(import.meta.env.VITE_FIRESTORE_EMULATOR_PORT || 8080);
+      connectFirestoreEmulator(db, host, port);
+      emulatorConnected = true;
+
+      if (import.meta.env.DEV) {
+        console.info(
+          `[InkLex] Firestore emulator → ${host}:${port} (project ${firebaseConfig.projectId}).`,
+        );
+      }
+    }
   }
+
   return db;
 }

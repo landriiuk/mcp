@@ -76,23 +76,90 @@
   stroke-linejoin: round;
 }
 
+.sidebarHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.sidebarCloseMobile,
+.mobileBurger,
+.mobileNavBackdrop {
+  display: none;
+}
+
+.sidebarCloseMobile {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  place-items: center;
+  transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease;
+}
+
+.sidebarCloseMobile:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+.sidebarCloseMobile svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.mobileBurger {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--white);
+  color: var(--ink);
+  place-items: center;
+  box-shadow: 0 1px 0 var(--border-subtle);
+}
+
+.mobileBurger svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.mobileBurger:hover {
+  border-color: var(--green);
+}
+
+.mobileNavBackdrop {
+  border: 0;
+  padding: 0;
+  background: var(--overlay);
+  cursor: pointer;
+}
+
 .folderInitial {
   display: none;
 }
 
 .brandIcon {
-  width: 28px;
-  height: 28px;
+  width: 64px;
+  height: 64px;
   border-radius: 4px;
-  background: linear-gradient(135deg, var(--ink) 0%, var(--ink-gradient-end) 100%);
-  color: var(--white);
-  display: grid;
-  place-items: center;
-  font-family: var(--font-ui);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0;
+  object-fit: contain;
   flex-shrink: 0;
+  display: block;
 }
 
 .sidebar.isCollapsed {
@@ -290,6 +357,22 @@
 .folderButton.active strong,
 .folderButton.active .folderCount {
   color: var(--ink);
+}
+
+.folderButton.isDropTarget,
+.folderRow.isDropTarget {
+  background: var(--green-soft);
+  border-color: var(--green);
+  box-shadow: inset 0 0 0 1px var(--green);
+}
+
+.folderRow.isDropTarget .folderButton {
+  background: transparent;
+}
+
+body.isCardDragging .folderButton,
+body.isCardDragging .folderRow {
+  transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
 }
 
 .folderInlineActions {
@@ -763,14 +846,104 @@ select:focus-visible {
 @media (max-width: 1024px) {
   .app {
     grid-template-columns: 1fr;
-    padding: 16px;
+    padding: 0;
+  }
+
+  .app.sidebarCollapsed {
+    grid-template-columns: 1fr;
+  }
+
+  .mobileBurger {
+    display: grid;
+  }
+
+  .mobileNavBackdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+  }
+
+  .app.mobileNavOpen .mobileNavBackdrop {
+    display: block;
+  }
+
+  .app.mobileNavOpen .mobileBurger {
+    visibility: hidden;
   }
 
   .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: auto;
+    z-index: 50;
+    width: 100%;
+    max-width: none;
     min-height: auto;
-    border-radius: 24px 24px 0 0;
-    border-right: 1px solid var(--border-subtle);
-    border-bottom: none;
+    max-height: min(72svh, 560px);
+    padding: 18px 16px 20px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    border-radius: 0 0 20px 20px;
+    transform: translateY(-105%);
+    transition: transform 200ms ease;
+    overflow-y: auto;
+    background: var(--sidebar-bg);
+    box-shadow: 0 10px 28px rgba(20, 32, 28, 0.14);
+  }
+
+  .sidebar.isCollapsed {
+    padding: 18px 16px 20px;
+    width: 100%;
+  }
+
+  .sidebar.isCollapsed .brandText,
+  .sidebar.isCollapsed .folderLabel,
+  .sidebar.isCollapsed .folderCount,
+  .sidebar.isCollapsed .folderCountBadge,
+  .sidebar.isCollapsed .folderInlineActions,
+  .sidebar.isCollapsed .folderInlineError {
+    display: revert;
+  }
+
+  .sidebar.isCollapsed .folderInitial {
+    display: none;
+  }
+
+  .sidebar.isCollapsed .folderAllRow {
+    display: flex;
+  }
+
+  .sidebar.isCollapsed .folderButton {
+    justify-content: flex-start;
+  }
+
+  .sidebar.isCollapsed .folderAddButton {
+    display: inline-flex;
+  }
+
+  .sidebar.isCollapsed .folderRow {
+    justify-content: flex-start;
+  }
+
+  .sidebar.isMobileOpen {
+    transform: translateY(0);
+  }
+
+  .sidebarToggle {
+    display: none;
+  }
+
+  .sidebarCloseMobile {
+    display: grid;
+  }
+
+  .content {
+    padding-top: 24px;
+    border-left: 0;
+    border-radius: 0;
   }
 
   .cardsGrid,
@@ -781,12 +954,11 @@ select:focus-visible {
 
 @media (max-width: 720px) {
   .app {
-    padding: 12px;
+    padding: 0;
   }
 
-  .sidebar {
-    padding: 18px 16px;
-    border-radius: 20px 20px 0 0;
+  .content {
+    padding: 18px 14px 14px;
   }
 
   .cardsGrid,
@@ -821,16 +993,6 @@ select:focus-visible {
 }
 
 @media (max-width: 900px) {
-  .app {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    min-height: auto;
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-  }
-
   .cardsGrid {
     grid-template-columns: 1fr;
   }

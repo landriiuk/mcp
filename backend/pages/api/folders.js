@@ -40,6 +40,10 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: validationError });
     }
 
+    if (name.toLowerCase() === "general") {
+      return res.status(400).json({ error: '"General" is reserved. Choose another name.' });
+    }
+
     const existing = await db.prepare("SELECT name FROM folders WHERE name = ?").get(name);
     if (existing) {
       return res.status(409).json({ error: "Folder already exists." });
@@ -75,12 +79,8 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Folder name is required." });
     }
 
-    if (name === "General") {
-      return res.status(400).json({ error: "General folder cannot be deleted." });
-    }
-
     await db.prepare("DELETE FROM folders WHERE name = ?").run(name);
-    await db.prepare("UPDATE words SET folder = ? WHERE folder = ?").run("General", name);
+    await db.prepare("UPDATE words SET folder = ? WHERE folder = ?").run("", name);
     return res.status(200).json({ deleted: name });
   }
 

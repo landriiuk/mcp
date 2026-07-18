@@ -8,6 +8,7 @@ export type WordboxCard = {
   folder: string;
   interval_days?: number;
   next_review_at?: string | null;
+  correct_streak?: number;
 };
 
 export type CardFilter = "all" | "learning" | "known";

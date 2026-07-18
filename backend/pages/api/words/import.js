@@ -28,14 +28,17 @@ function normalizeRow(row) {
           .map((tag) => tag.trim())
           .filter(Boolean)
       : [],
-    folder: row.folder || "General",
+    folder: row.folder || "",
     interval_days: Number(row.interval_days) || 0,
     next_review_at: row.next_review_at || null,
   };
 }
 
 async function ensureFolderExists(folderName) {
-  const normalizedFolder = (folderName || "General").trim() || "General";
+  const normalizedFolder = (folderName || "").trim();
+  if (!normalizedFolder) {
+    return "";
+  }
   const existing = await db
     .prepare("SELECT name FROM folders WHERE name = ?")
     .get(normalizedFolder);
@@ -95,7 +98,7 @@ export default async function handler(req, res) {
     const status = VALID_STATUSES.has(entry.status) ? entry.status : "new";
     const example = (entry.example || "").trim();
     const normalizedTags = normalizeTags(entry.tags);
-    const folder = await ensureFolderExists(entry.folder || "General");
+    const folder = await ensureFolderExists(entry.folder || "");
     const now = new Date().toISOString();
     const newId = crypto.randomUUID();
     const interval_days = 0;

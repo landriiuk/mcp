@@ -13,20 +13,20 @@ import {
   deleteWord,
   importWords,
   listFolders,
-  listWords,
+  purgeLegacyGeneralFolder,
+  reconcileCardFolderIds,
   renameFolder,
   saveWord,
-  ensureFolder,
-} from "./data/firestoreApi";
-import { sampleCards } from "./data/sampleCards";
-import { isFirebaseConfigured } from "./lib/firebase";
-import type { Card, Draft } from "./types/card";
-import { getImportTargetFolder, type ImportWordRow } from "./utils/importWords";
+} from "./data/api";
+import { sampleCards, sampleFolders } from "./data/sampleCards";
+import { isDataStoreConfigured, useMockDb } from "./lib/dataMode";
+import type { Card, Draft, Folder } from "./types/card";
+import { type ImportWordRow } from "./utils/importWords";
 import {
   countSessionPool,
   gradeCard,
-  isDue,
   isNewCard,
+  isQuestEligible,
   isScheduledDue,
   reviewFieldsForStatus,
   type ReviewGrade,
@@ -45,20 +45,21 @@ const emptyDraft: Draft = {
   example: "",
   status: "new",
   tags: [],
-  folder: "General",
+  folder: "",
 };
 
 function App() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { folder: activeFolder, isLearningMode } = useMemo(
-    () => parseLocation(location.pathname),
-    [location.pathname],
-  );
+  const {
+    folderId: activeFolder,
+    isLearningMode,
+    invalidFolderRef,
+  } = useMemo(() => parseLocation(location.pathname), [location.pathname]);
 
   const [cards, setCards] = useState<Card[]>([]);
   const [query, setQuery] = useState("");
-  const [folders, setFolders] = useState<string[]>([]);
+  const [folders, setFolders] = useState<Folder[]>([]);
   const [filter, setFilter] = useState<"all" | "learning" | "known">("all");
   const [folderDraft, setFolderDraft] = useState("");
   const [editingFolder, setEditingFolder] = useState<string | null>(null);
@@ -80,6 +81,11 @@ function App() {
       return false;
     }
   });
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+
+  const folderNameById = useMemo(() => {
+    return new Map(folders.map((folder) => [folder.id, folder.name]));
+  }, [folders]);
 
   useEffect(() => {
     try {
@@ -94,6 +100,44 @@ function App() {
 
   useEffect(() => installButtonClickGuard(), []);
 
+  useEffect(() => {
+    if (!isMobileNavOpen) {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsMobileNavOpen(false);
+        cancelFolderEditing();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isMobileNavOpen]);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 1024px)");
+    const onChange = () => {
+      if (!media.matches) {
+        setIsMobileNavOpen(false);
+      }
+    };
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
+
+  function closeMobileNav() {
+    setIsMobileNavOpen(false);
+    cancelFolderEditing();
+  }
+
   function toggleSidebar() {
     setIsSidebarCollapsed((collapsed) => {
       if (!collapsed) {
@@ -106,30 +150,35 @@ function App() {
   useEffect(() => {
     async function loadWords() {
       try {
-        if (!isFirebaseConfigured()) {
-          throw new Error("Firebase env is missing");
+        if (!isDataStoreConfigured()) {
+          throw new Error("Data store is not configured");
         }
 
-        const [data, folderNames] = await Promise.all([listWords(), listFolders()]);
-        await ensureFolder("General");
+        if (import.meta.env.DEV && useMockDb()) {
+          console.info("[InkLex] Local mock DB (localStorage). No Firebase network.");
+        }
 
-        setCards(data);
-        setFolders(
-          Array.from(
-            new Set([
-              "General",
-              ...folderNames,
-              ...data.map((card) => card.folder).filter(Boolean),
-            ]),
-          ).sort(),
+        const purged = await purgeLegacyGeneralFolder();
+        let cardsData = purged.cards;
+        let foldersData = purged.folders.filter(
+          (folder) => folder.name.trim().toLowerCase() !== "general",
         );
+        cardsData = cardsData.map((card) =>
+          card.folder.trim().toLowerCase() === "general" || card.folder === "General"
+            ? { ...card, folder: "" }
+            : card,
+        );
+        cardsData = await reconcileCardFolderIds(cardsData, foldersData);
+
+        setCards(cardsData);
+        setFolders(foldersData);
         setLoadError(null);
       } catch {
         setLoadError(
-          "Unable to load Firebase data. Check VITE_FIREBASE_* in .env. Using local sample words.",
+          "Unable to load data store. Check .env (VITE_USE_MOCK_DB or VITE_FIREBASE_*). Using sample words.",
         );
         setCards(sampleCards);
-        setFolders(["General", "Work", "Study", "Travel"]);
+        setFolders([...sampleFolders]);
       } finally {
         setIsLoading(false);
       }
@@ -139,37 +188,39 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (isLoading || activeFolder === "all") {
+    if (isLoading) {
       return;
     }
 
-    const folderExists = folders.some(
-      (folder) => folder.toLowerCase() === activeFolder.toLowerCase(),
-    );
+    if (invalidFolderRef) {
+      navigate("/", { replace: true });
+      return;
+    }
+
+    if (activeFolder === "all") {
+      return;
+    }
+
+    const folderExists = folders.some((folder) => folder.id === activeFolder);
 
     if (!folderExists) {
       navigate("/", { replace: true });
     }
-  }, [isLoading, activeFolder, folders, navigate]);
+  }, [isLoading, activeFolder, folders, navigate, invalidFolderRef]);
 
   const filteredCards = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
     return cards.filter((card) => {
       const matchesFolder = activeFolder === "all" || card.folder === activeFolder;
-
-      if (isLearningMode) {
-        // Due-first pool: scheduled due (incl. decayed known) + unscheduled new.
-        return matchesFolder && isDue(card);
-      }
-
       const matchesFilter = filter === "all" || card.status === filter;
+      const folderLabel = folderNameById.get(card.folder) ?? card.folder;
       const searchable = [
         card.word,
         card.meaning,
         card.example,
         card.status,
-        card.folder,
+        folderLabel,
         ...card.tags,
       ]
         .join(" ")
@@ -177,7 +228,43 @@ function App() {
 
       return matchesFilter && matchesFolder && searchable.includes(normalizedQuery);
     });
-  }, [cards, filter, query, activeFolder, isLearningMode]);
+  }, [cards, filter, query, activeFolder, folderNameById]);
+
+  const displayCards = useMemo(
+    () =>
+      filteredCards.map((card) => ({
+        ...card,
+        folder: card.folder ? folderNameById.get(card.folder) ?? card.folder : "",
+      })),
+    [filteredCards, folderNameById],
+  );
+
+  function withFolderLabel(card: Card) {
+    return {
+      ...card,
+      folder: card.folder ? folderNameById.get(card.folder) ?? card.folder : "",
+    };
+  }
+
+  /** Quest pool: new + learning in the active folder (not All aggregate). */
+  const questPoolCards = useMemo(() => {
+    if (activeFolder === "all") {
+      return [];
+    }
+
+    return cards
+      .filter((card) => card.folder === activeFolder && isQuestEligible(card))
+      .map(withFolderLabel);
+  }, [cards, activeFolder, folderNameById]);
+
+  /** Full folder scope for Review mode (no due filter / no max-10). */
+  const reviewPoolCards = useMemo(() => {
+    if (activeFolder === "all") {
+      return [];
+    }
+
+    return cards.filter((card) => card.folder === activeFolder).map(withFolderLabel);
+  }, [cards, activeFolder, folderNameById]);
 
   const counts = useMemo(
     () => ({
@@ -193,17 +280,17 @@ function App() {
     return cards.reduce<
       Record<string, { all: number; new: number; learning: number; known: number }>
     >((accumulator, card) => {
-      const folderName = card.folder?.trim();
-      if (!folderName) {
+      const folderId = card.folder?.trim();
+      if (!folderId) {
         return accumulator;
       }
 
-      if (!accumulator[folderName]) {
-        accumulator[folderName] = { all: 0, new: 0, learning: 0, known: 0 };
+      if (!accumulator[folderId]) {
+        accumulator[folderId] = { all: 0, new: 0, learning: 0, known: 0 };
       }
 
-      accumulator[folderName].all += 1;
-      accumulator[folderName][card.status] += 1;
+      accumulator[folderId].all += 1;
+      accumulator[folderId][card.status] += 1;
       return accumulator;
     }, {});
   }, [cards]);
@@ -216,30 +303,36 @@ function App() {
     return cards.filter((card) => card.folder === activeFolder);
   }, [cards, activeFolder]);
 
-  const folderPracticeCards = useMemo(() => {
-    return cards.filter((card) => {
-      const matchesFolder = activeFolder === "all" || card.folder === activeFolder;
-      return matchesFolder && isDue(card);
-    });
-  }, [cards, activeFolder]);
-
-  const sessionPool = useMemo(
-    () => countSessionPool(folderPracticeCards),
-    [folderPracticeCards],
-  );
+  const sessionPool = useMemo(() => countSessionPool(questPoolCards), [questPoolCards]);
 
   const hasAheadOfSchedule = useMemo(() => {
+    if (activeFolder === "all") {
+      return false;
+    }
+
     return cards.some((card) => {
-      const matchesFolder = activeFolder === "all" || card.folder === activeFolder;
-      if (!matchesFolder || card.status === "known") {
+      if (card.folder !== activeFolder || !isQuestEligible(card)) {
         return false;
       }
       return Boolean(card.next_review_at) && !isScheduledDue(card) && !isNewCard(card);
     });
   }, [cards, activeFolder]);
 
-  function getFolderSectionCounts(folder: string) {
-    if (folder === "all") {
+  const learningScopeStats = useMemo(() => {
+    if (activeFolder === "all") {
+      return { saved: counts.all, known: counts.known };
+    }
+    const folderCounts = folderStatusCounts[activeFolder] ?? {
+      all: 0,
+      new: 0,
+      learning: 0,
+      known: 0,
+    };
+    return { saved: folderCounts.all, known: folderCounts.known };
+  }, [activeFolder, counts.all, counts.known, folderStatusCounts]);
+
+  function getFolderSectionCounts(folderId: string) {
+    if (folderId === "all") {
       return {
         all: counts.all,
         learning: counts.learning,
@@ -247,7 +340,12 @@ function App() {
       };
     }
 
-    const folderCounts = folderStatusCounts[folder] ?? { all: 0, new: 0, learning: 0, known: 0 };
+    const folderCounts = folderStatusCounts[folderId] ?? {
+      all: 0,
+      new: 0,
+      learning: 0,
+      known: 0,
+    };
 
     return {
       all: folderCounts.all,
@@ -262,28 +360,26 @@ function App() {
     { value: "known", label: "Known" },
   ] as const;
 
-  function selectFolder(folder: string) {
+  function selectFolder(folderId: string) {
     setFilter("all");
-    navigate(folderPath(folder));
+    navigate(folderPath(folderId));
+    setIsMobileNavOpen(false);
   }
 
   function startLearning() {
+    if (activeFolder === "all") {
+      return;
+    }
     navigate(learningPath(activeFolder));
+  }
+
+  function selectFolderForLearning(folderId: string) {
+    navigate(learningPath(folderId));
   }
 
   function exitLearning() {
     navigate(folderPath(activeFolder));
   }
-
-  useEffect(() => {
-    setFolders((currentFolders) => {
-      const nextFolders = Array.from(
-        new Set([...currentFolders, ...cards.map((card) => card.folder).filter(Boolean)]),
-      ).sort();
-
-      return nextFolders;
-    });
-  }, [cards]);
 
   function normalizeFolderName(value: string) {
     return value.trim().replace(/\s+/g, " ");
@@ -324,13 +420,13 @@ function App() {
     setFolderError(null);
   }
 
-  function startEditingFolder(folder: string) {
+  function startEditingFolder(folder: Folder) {
     if (isSidebarCollapsed) {
       setIsSidebarCollapsed(false);
     }
     setIsCreatingFolder(false);
-    setEditingFolder(folder);
-    setFolderDraft(folder);
+    setEditingFolder(folder.id);
+    setFolderDraft(folder.name);
     setFolderError(null);
   }
 
@@ -431,7 +527,7 @@ function App() {
 
     if (isCreatingFolder) {
       const existingFolder = folders.find(
-        (folder) => folder.toLowerCase() === normalizedName.toLowerCase(),
+        (folder) => folder.name.toLowerCase() === normalizedName.toLowerCase(),
       );
 
       if (existingFolder) {
@@ -440,10 +536,12 @@ function App() {
       }
 
       try {
-        await createFolder(normalizedName);
-        setFolders((currentFolders) => [...currentFolders, normalizedName].sort());
+        const created = await createFolder(normalizedName);
+        setFolders((currentFolders) =>
+          [...currentFolders, created].sort((a, b) => a.name.localeCompare(b.name)),
+        );
         setFilter("all");
-        navigate(folderPath(normalizedName));
+        navigate(folderPath(created.id));
         cancelFolderEditing();
       } catch (error) {
         setFolderError(error instanceof Error ? error.message : "Could not create folder.");
@@ -455,13 +553,16 @@ function App() {
       return;
     }
 
-    if (normalizedName === editingFolder) {
+    const current = folders.find((folder) => folder.id === editingFolder);
+    if (current && normalizedName === current.name) {
       cancelFolderEditing();
       return;
     }
 
     const existingFolder = folders.find(
-      (folder) => folder.toLowerCase() === normalizedName.toLowerCase() && folder !== editingFolder,
+      (folder) =>
+        folder.name.toLowerCase() === normalizedName.toLowerCase() &&
+        folder.id !== editingFolder,
     );
 
     if (existingFolder) {
@@ -473,17 +574,12 @@ function App() {
       await renameFolder(editingFolder, normalizedName);
 
       setFolders((currentFolders) =>
-        currentFolders.map((folder) => (folder === editingFolder ? normalizedName : folder)).sort(),
+        currentFolders
+          .map((folder) =>
+            folder.id === editingFolder ? { ...folder, name: normalizedName } : folder,
+          )
+          .sort((a, b) => a.name.localeCompare(b.name)),
       );
-      setCards((currentCards) =>
-        currentCards.map((card) =>
-          card.folder === editingFolder ? { ...card, folder: normalizedName } : card,
-        ),
-      );
-
-      if (activeFolder === editingFolder) {
-        navigate(folderPath(normalizedName));
-      }
 
       cancelFolderEditing();
     } catch (error) {
@@ -495,23 +591,20 @@ function App() {
     cancelFolderEditing();
   }
 
-  async function deleteFolder(folder: string) {
-    if (folder === "General") {
-      setFolderError("The General folder cannot be deleted.");
-      return;
-    }
-
+  async function deleteFolder(folderId: string) {
     try {
-      await deleteFolderDoc(folder);
+      await deleteFolderDoc(folderId);
 
       setCards((currentCards) =>
-        currentCards.map((card) => (card.folder === folder ? { ...card, folder: "General" } : card)),
+        currentCards.map((card) =>
+          card.folder === folderId ? { ...card, folder: "" } : card,
+        ),
       );
       setFolders((currentFolders) =>
-        currentFolders.filter((currentFolder) => currentFolder !== folder),
+        currentFolders.filter((currentFolder) => currentFolder.id !== folderId),
       );
 
-      if (activeFolder === folder) {
+      if (activeFolder === folderId) {
         navigate("/");
       }
     } catch {
@@ -539,13 +632,19 @@ function App() {
     setIsImportOpen(false);
   }
 
-  function handleImportSuccess(targetFolder: string) {
+  function handleImportSuccess(targetFolderId: string) {
     setFilter("all");
-    navigate(folderPath(targetFolder));
+    navigate(folderPath(targetFolderId));
     closeImportModal();
   }
 
   async function handleImportWords(rows: ImportWordRow[]) {
+    if (!isDataStoreConfigured()) {
+      throw new Error(
+        "Firebase is not configured on this deploy. Set VITE_FIREBASE_* on Vercel and redeploy.",
+      );
+    }
+
     const data = await importWords(
       rows.map((row) => ({
         word: row.word,
@@ -565,14 +664,13 @@ function App() {
 
     if (importedWords.length > 0) {
       setCards((current) => [...importedWords, ...current]);
-      setFolders((currentFolders) =>
-        Array.from(
-          new Set([
-            ...currentFolders,
-            ...importedWords.map((card) => card.folder).filter(Boolean),
-          ]),
-        ).sort(),
-      );
+      try {
+        const refreshedFolders = await listFolders();
+        setFolders(refreshedFolders);
+      } catch (error) {
+        console.error("[InkLex] listFolders after import failed", error);
+        // Cards already saved — keep import success even if folder refresh fails.
+      }
     }
 
     return {
@@ -581,7 +679,7 @@ function App() {
       errors: data.errors.map((entry) =>
         entry.row ? `Row ${entry.row}: ${entry.error}` : entry.error || "Import error",
       ),
-      targetFolder: getImportTargetFolder(rows),
+      targetFolder: data.targetFolderId,
     };
   }
 
@@ -604,6 +702,7 @@ function App() {
       folder: card.folder.trim(),
       interval_days: existing?.interval_days ?? review.interval_days,
       next_review_at: existing?.next_review_at ?? review.next_review_at,
+      correct_streak: existing?.correct_streak ?? review.correct_streak,
     };
 
     try {
@@ -667,15 +766,84 @@ function App() {
     }
   }
 
+  async function moveCardToFolder(cardId: string, folderId: string) {
+    const card = cards.find((entry) => entry.id === cardId);
+    if (!card) {
+      return;
+    }
+
+    const nextFolder = folderId === "all" ? "" : folderId;
+    if (card.folder === nextFolder) {
+      return;
+    }
+
+    const optimisticCard = { ...card, folder: nextFolder };
+    setCards((current) =>
+      current.map((item) => (item.id === cardId ? optimisticCard : item)),
+    );
+
+    try {
+      const updatedCard = await saveWord(optimisticCard);
+      setCards((current) =>
+        current.map((item) => (item.id === cardId ? updatedCard : item)),
+      );
+    } catch {
+      setCards((current) =>
+        current.map((item) => (item.id === cardId ? card : item)),
+      );
+    }
+  }
+
+  async function moveCardToStatus(
+    cardId: string,
+    status: "new" | "learning" | "known",
+  ) {
+    const card = cards.find((entry) => entry.id === cardId);
+    if (!card || card.status === status) {
+      return;
+    }
+
+    const review = reviewFieldsForStatus(status);
+    const optimisticCard = { ...card, status, ...review };
+    setCards((current) =>
+      current.map((item) => (item.id === cardId ? optimisticCard : item)),
+    );
+
+    try {
+      const updatedCard = await saveWord(optimisticCard);
+      setCards((current) =>
+        current.map((item) => (item.id === cardId ? updatedCard : item)),
+      );
+    } catch {
+      setCards((current) =>
+        current.map((item) => (item.id === cardId ? card : item)),
+      );
+    }
+  }
+
   return (
-    <main className={`app${isSidebarCollapsed ? " sidebarCollapsed" : ""}`}>
+    <main
+      className={`app${isSidebarCollapsed ? " sidebarCollapsed" : ""}${
+        isMobileNavOpen ? " mobileNavOpen" : ""
+      }`}
+    >
+      <button
+        className="mobileNavBackdrop"
+        type="button"
+        aria-label="Close folders"
+        onClick={closeMobileNav}
+      />
+
       <FolderSidebar
         isCollapsed={isSidebarCollapsed}
+        isMobileOpen={isMobileNavOpen}
         onToggleCollapse={toggleSidebar}
+        onCloseMobile={closeMobileNav}
         activeFolder={activeFolder}
         folders={folders}
         getFolderSectionCounts={getFolderSectionCounts}
         onSelectFolder={selectFolder}
+        onDropCard={moveCardToFolder}
         isCreatingFolder={isCreatingFolder}
         editingFolder={editingFolder}
         folderDraft={folderDraft}
@@ -691,26 +859,34 @@ function App() {
       />
 
       <Wordbox
-        cards={filteredCards}
+        cards={displayCards}
+        questCards={questPoolCards}
+        reviewCards={reviewPoolCards}
         optionPool={optionPool}
         sessionScope={activeFolder}
+        folders={folders}
         query={query}
         onQueryChange={setQuery}
         onOpenNewCardForm={openNewCardForm}
         onOpenImport={openImportModal}
+        onOpenFolders={() => setIsMobileNavOpen(true)}
         filter={filter}
         sectionCounts={getFolderSectionCounts(activeFolder)}
         sections={folderSections}
         onFilterChange={setFilter}
         onDeleteCard={deleteCard}
+        onMoveCardToStatus={moveCardToStatus}
         onReviewGrade={handleReviewGrade}
         isLearningMode={isLearningMode}
         dueCount={sessionPool.due}
-        newCount={sessionPool.news}
         sessionSize={sessionPool.sessionSize}
+        poolSize={sessionPool.poolSize}
+        savedCount={learningScopeStats.saved}
+        knownCount={learningScopeStats.known}
         hasAheadOfSchedule={hasAheadOfSchedule}
         onStartLearning={startLearning}
         onExitLearning={exitLearning}
+        onSelectFolderForLearning={selectFolderForLearning}
       />
 
       {isEditorOpen && (
@@ -726,7 +902,7 @@ function App() {
               onCreateFolder={async (name) => {
                 const created = await createFolder(name);
                 setFolders((currentFolders) =>
-                  Array.from(new Set([...currentFolders, created])).sort(),
+                  [...currentFolders, created].sort((a, b) => a.name.localeCompare(b.name)),
                 );
                 return created;
               }}
