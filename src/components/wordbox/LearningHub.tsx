@@ -36,9 +36,9 @@ export function LearningHub({
   return (
     <div className="learningHubPage" aria-labelledby="learning-hub-title">
       <div className="learningHubHeader">
-        <p className="eyebrow">Practice</p>
-        <h2 id="learning-hub-title">Learning Hub</h2>
-        <p className="learningHubLead">Choose how you want to practice.</p>
+        <p id="learning-hub-title" className="learningHubLead">
+          Choose how you want to practice.
+        </p>
       </div>
 
       <div className="learningHubModes">

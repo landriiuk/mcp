@@ -202,11 +202,11 @@ export function Wordbox({
   const learningIntro =
     !activeSessionMode
       ? isAllFolder
-        ? "Pick a folder to start practicing."
-        : "Choose Quest or Review to start practicing."
+        ? "Pick a folder to continue."
+        : null
       : activeSessionMode === "review"
-        ? "See the word or the meaning, tap to reveal, then rate Bad or Good — or Next to skip."
-        : "Pick the correct meaning for the word. Example stays under a spoiler.";
+        ? "Tap to reveal, then Bad / Good — or Next to skip."
+        : "Pick the correct meaning. Example stays under a spoiler.";
 
   return (
     <>
@@ -215,11 +215,14 @@ export function Wordbox({
           <div className="contentHeaderLead">
             <div>
               <h1>{isLearningMode ? "Learning" : "Cards"}</h1>
-              <p className="intro">
-                {isLearningMode
-                  ? learningIntro
-                  : "Drag a card onto a folder or a tab (Cards / Learning / Known) to move it. Quest practices up to 10 Cards/Learning words at a time."}
-              </p>
+              {isLearningMode ? (
+                learningIntro ? <p className="intro">{learningIntro}</p> : null
+              ) : (
+                <p className="intro">
+                  Drag a card onto a folder or a tab (Cards / Learning / Known) to move it.
+                  Quest practices up to 10 Cards/Learning words at a time.
+                </p>
+              )}
             </div>
           </div>
 

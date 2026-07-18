@@ -637,6 +637,7 @@ body.isCardDragging .contentSections button {
   width: min(820px, 100%);
   display: grid;
   gap: 4px;
+  margin-top: 8px;
 }
 
 .learningHubHeader {
@@ -668,9 +669,10 @@ body.isCardDragging .contentSections button {
 }
 
 .learningHubCard {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
-  align-content: start;
+  height: 100%;
   padding: 18px;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
@@ -732,7 +734,7 @@ body.isCardDragging .contentSections button {
 }
 
 .learningHubCard .primary {
-  margin-top: 4px;
+  margin-top: auto;
   width: 100%;
 }
 
