@@ -274,7 +274,13 @@ body.isCardDragging .contentSections button {
   position: relative;
   height: 100%;
   cursor: grab;
+  /* Allow vertical page scroll on touch; lock only while dragging. */
+  touch-action: pan-y;
+}
+
+body.isCardDragging .wordboxCardDrag {
   touch-action: none;
+  cursor: grabbing;
 }
 
 .wordboxCardPronounce {
