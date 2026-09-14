@@ -1,13 +1,57 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // MVP: open read/write (same as previous public API).
-    // Tighten with Firebase Auth before a public launch.
-    match /words/{wordId} {
-      allow read, write: if true;
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
     }
-    match /folders/{folderId} {
-      allow read, write: if true;
+
+    function validFolder() {
+      return request.resource.data.keys().hasOnly(['name', 'updated_at'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 50
+        && request.resource.data.updated_at is string;
+    }
+
+    function validWord() {
+      return request.resource.data.keys().hasOnly([
+        'word',
+        'meaning',
+        'example',
+        'status',
+        'tags',
+        'folder',
+        'interval_days',
+        'next_review_at',
+        'correct_streak',
+        'created_at',
+        'updated_at'
+      ])
+        && request.resource.data.word is string
+        && request.resource.data.word.size() > 0
+        && request.resource.data.meaning is string
+        && request.resource.data.meaning.size() > 0
+        && request.resource.data.example is string
+        && request.resource.data.status in ['new', 'learning', 'known']
+        && request.resource.data.tags is list
+        && request.resource.data.tags.size() <= 3
+        && request.resource.data.folder is string
+        && request.resource.data.interval_days is number
+        && (request.resource.data.next_review_at == null
+          || request.resource.data.next_review_at is string)
+        && request.resource.data.correct_streak is number
+        && request.resource.data.created_at is string
+        && request.resource.data.updated_at is string;
+    }
+
+    match /users/{uid}/folders/{folderId} {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid) && validFolder();
+    }
+
+    match /users/{uid}/words/{wordId} {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid) && validWord();
     }
   }
 }

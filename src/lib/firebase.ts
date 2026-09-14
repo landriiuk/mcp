@@ -5,6 +5,11 @@ import {
   type Firestore,
 } from "firebase/firestore";
 import {
+  connectAuthEmulator,
+  getAuth as getFirebaseAuth,
+  type Auth,
+} from "firebase/auth";
+import {
   isDataStoreConfigured,
   useFirestoreEmulator,
   useMockDb,
@@ -28,7 +33,9 @@ const firebaseConfig = {
 
 let app: FirebaseApp | null = null;
 let db: Firestore | null = null;
-let emulatorConnected = false;
+let auth: Auth | null = null;
+let firestoreEmulatorConnected = false;
+let authEmulatorConnected = false;
 
 export function getFirebaseApp(): FirebaseApp {
   if (useMockDb()) {
@@ -62,11 +69,11 @@ export function getDb(): Firestore {
   if (!db) {
     db = getFirestore(getFirebaseApp());
 
-    if (useFirestoreEmulator() && !emulatorConnected) {
+    if (useFirestoreEmulator() && !firestoreEmulatorConnected) {
       const host = import.meta.env.VITE_FIRESTORE_EMULATOR_HOST || "127.0.0.1";
       const port = Number(import.meta.env.VITE_FIRESTORE_EMULATOR_PORT || 8080);
       connectFirestoreEmulator(db, host, port);
-      emulatorConnected = true;
+      firestoreEmulatorConnected = true;
 
       if (import.meta.env.DEV) {
         console.info(
@@ -77,4 +84,25 @@ export function getDb(): Firestore {
   }
 
   return db;
+}
+
+export function getAuth(): Auth {
+  if (useMockDb()) {
+    throw new Error("Mock DB is enabled — Firebase Auth must not be used.");
+  }
+
+  if (!auth) {
+    auth = getFirebaseAuth(getFirebaseApp());
+
+    if (useFirestoreEmulator() && !authEmulatorConnected) {
+      const host = import.meta.env.VITE_AUTH_EMULATOR_HOST || "127.0.0.1";
+      const port = Number(import.meta.env.VITE_AUTH_EMULATOR_PORT || 9099);
+      connectAuthEmulator(auth, `http://${host}:${port}`, {
+        disableWarnings: true,
+      });
+      authEmulatorConnected = true;
+    }
+  }
+
+  return auth;
 }

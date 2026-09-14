@@ -1,7 +1,11 @@
 import type { Card, CardStatus, Draft, Folder } from "../types/card";
 import { reviewFieldsForStatus } from "../utils/reviewAlgorithm";
 
-const STORAGE_KEY = "inklex.mock.v1";
+const LEGACY_STORAGE_KEY = "inklex.mock.v1";
+
+function storageKey(uid: string) {
+  return `${LEGACY_STORAGE_KEY}.${uid}`;
+}
 
 type MockState = {
   folders: Folder[];
@@ -20,9 +24,12 @@ function emptyState(): MockState {
   return { folders: [], words: [] };
 }
 
-function readState(): MockState {
+function readState(uid: string): MockState {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const key = storageKey(uid);
+    const raw =
+      window.localStorage.getItem(key) ??
+      (uid === "local-dev" ? window.localStorage.getItem(LEGACY_STORAGE_KEY) : null);
     if (!raw) {
       return emptyState();
     }
@@ -36,19 +43,22 @@ function readState(): MockState {
   }
 }
 
-function writeState(state: MockState) {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+function writeState(uid: string, state: MockState) {
+  window.localStorage.setItem(storageKey(uid), JSON.stringify(state));
+  if (uid === "local-dev") {
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+  }
 }
 
-function mutate(updater: (state: MockState) => void) {
-  const state = readState();
+function mutate(uid: string, updater: (state: MockState) => void) {
+  const state = readState(uid);
   updater(state);
-  writeState(state);
+  writeState(uid, state);
   return state;
 }
 
-export async function listWords(): Promise<Card[]> {
-  return readState()
+export async function listWords(uid: string): Promise<Card[]> {
+  return readState(uid)
     .words.map(({ created_at: _c, updated_at: _u, ...card }) => ({
       ...card,
       correct_streak: Number(card.correct_streak) || 0,
@@ -56,17 +66,17 @@ export async function listWords(): Promise<Card[]> {
     .sort((a, b) => a.word.localeCompare(b.word));
 }
 
-export async function listFolders(): Promise<Folder[]> {
-  return [...readState().folders].sort((a, b) => a.name.localeCompare(b.name));
+export async function listFolders(uid: string): Promise<Folder[]> {
+  return [...readState(uid).folders].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export async function ensureFolderByName(name: string): Promise<string> {
+export async function ensureFolderByName(uid: string, name: string): Promise<string> {
   const normalized = name.trim();
   if (!normalized) {
     return "";
   }
 
-  const existing = await listFolders();
+  const existing = await listFolders(uid);
   const match = existing.find(
     (folder) => folder.name.toLowerCase() === normalized.toLowerCase(),
   );
@@ -75,13 +85,13 @@ export async function ensureFolderByName(name: string): Promise<string> {
   }
 
   const id = createId();
-  mutate((state) => {
+  mutate(uid, (state) => {
     state.folders.push({ id, name: normalized });
   });
   return id;
 }
 
-export async function createFolder(name: string): Promise<Folder> {
+export async function createFolder(uid: string, name: string): Promise<Folder> {
   const normalized = name.trim();
   if (!normalized) {
     throw new Error("Folder name is required.");
@@ -93,19 +103,23 @@ export async function createFolder(name: string): Promise<Folder> {
     throw new Error('"learning" is reserved. Choose another name.');
   }
 
-  const existing = await listFolders();
+  const existing = await listFolders(uid);
   if (existing.some((folder) => folder.name.toLowerCase() === normalized.toLowerCase())) {
     throw new Error("Folder already exists.");
   }
 
   const folder = { id: createId(), name: normalized };
-  mutate((state) => {
+  mutate(uid, (state) => {
     state.folders.push(folder);
   });
   return folder;
 }
 
-export async function renameFolder(folderId: string, newName: string): Promise<void> {
+export async function renameFolder(
+  uid: string,
+  folderId: string,
+  newName: string,
+): Promise<void> {
   const normalized = newName.trim();
   if (!normalized) {
     throw new Error("Folder name is required.");
@@ -114,7 +128,7 @@ export async function renameFolder(folderId: string, newName: string): Promise<v
     throw new Error("Folder id is required.");
   }
 
-  const existing = await listFolders();
+  const existing = await listFolders(uid);
   if (
     existing.some(
       (folder) =>
@@ -125,7 +139,7 @@ export async function renameFolder(folderId: string, newName: string): Promise<v
   }
 
   let found = false;
-  mutate((state) => {
+  mutate(uid, (state) => {
     const folder = state.folders.find((entry) => entry.id === folderId);
     if (!folder) {
       return;
@@ -139,13 +153,13 @@ export async function renameFolder(folderId: string, newName: string): Promise<v
   }
 }
 
-export async function deleteFolderDoc(folderId: string): Promise<void> {
+export async function deleteFolderDoc(uid: string, folderId: string): Promise<void> {
   const normalized = folderId.trim();
   if (!normalized) {
     throw new Error("Folder id is required.");
   }
 
-  mutate((state) => {
+  mutate(uid, (state) => {
     const folder = state.folders.find((entry) => entry.id === normalized);
     const legacyName = folder?.name ?? normalized;
     state.folders = state.folders.filter((entry) => entry.id !== normalized);
@@ -159,6 +173,7 @@ export async function deleteFolderDoc(folderId: string): Promise<void> {
 }
 
 export async function reconcileCardFolderIds(
+  uid: string,
   cards: Card[],
   folders: Folder[],
 ): Promise<Card[]> {
@@ -180,7 +195,7 @@ export async function reconcileCardFolderIds(
   });
 
   if (updates.length > 0) {
-    mutate((state) => {
+    mutate(uid, (state) => {
       for (const update of updates) {
         const word = state.words.find((entry) => entry.id === update.id);
         if (word) {
@@ -194,13 +209,13 @@ export async function reconcileCardFolderIds(
   return nextCards;
 }
 
-export async function purgeLegacyGeneralFolder(): Promise<{
+export async function purgeLegacyGeneralFolder(uid: string): Promise<{
   folders: Folder[];
   cards: Card[];
   removed: boolean;
 }> {
-  const folders = await listFolders();
-  const cards = await listWords();
+  const folders = await listFolders(uid);
+  const cards = await listWords(uid);
   const generalFolders = folders.filter(
     (folder) =>
       folder.id === "General" || folder.name.trim().toLowerCase() === "general",
@@ -217,7 +232,7 @@ export async function purgeLegacyGeneralFolder(): Promise<{
     return { folders, cards, removed: false };
   }
 
-  mutate((state) => {
+  mutate(uid, (state) => {
     state.folders = state.folders.filter((folder) => !generalIds.has(folder.id));
     for (const word of state.words) {
       const ref = word.folder.trim();
@@ -229,8 +244,8 @@ export async function purgeLegacyGeneralFolder(): Promise<{
   });
 
   return {
-    folders: (await listFolders()).filter((folder) => !generalIds.has(folder.id)),
-    cards: (await listWords()).map((card) => {
+    folders: (await listFolders(uid)).filter((folder) => !generalIds.has(folder.id)),
+    cards: (await listWords(uid)).map((card) => {
       const ref = card.folder.trim();
       if (ref === "General" || generalIds.has(ref) || ref.toLowerCase() === "general") {
         return { ...card, folder: "" };
@@ -241,7 +256,10 @@ export async function purgeLegacyGeneralFolder(): Promise<{
   };
 }
 
-export async function createWord(draft: Draft & Partial<Card>): Promise<Card> {
+export async function createWord(
+  uid: string,
+  draft: Draft & Partial<Card>,
+): Promise<Card> {
   const folder = draft.folder?.trim() ?? "";
   const review = reviewFieldsForStatus(draft.status || "new");
   const id = createId();
@@ -263,13 +281,13 @@ export async function createWord(draft: Draft & Partial<Card>): Promise<Card> {
         : review.correct_streak,
   };
 
-  mutate((state) => {
+  mutate(uid, (state) => {
     state.words.unshift({ ...card, created_at, updated_at: created_at });
   });
   return card;
 }
 
-export async function saveWord(card: Card): Promise<Card> {
+export async function saveWord(uid: string, card: Card): Promise<Card> {
   const folder = card.folder?.trim() ?? "";
   const next: Card = {
     ...card,
@@ -282,7 +300,7 @@ export async function saveWord(card: Card): Promise<Card> {
     correct_streak: Number(card.correct_streak) || 0,
   };
 
-  mutate((state) => {
+  mutate(uid, (state) => {
     const index = state.words.findIndex((entry) => entry.id === card.id);
     const created_at = index >= 0 ? state.words[index].created_at : nowIso();
     const stored = { ...next, created_at, updated_at: nowIso() };
@@ -296,8 +314,8 @@ export async function saveWord(card: Card): Promise<Card> {
   return next;
 }
 
-export async function deleteWord(id: string): Promise<void> {
-  mutate((state) => {
+export async function deleteWord(uid: string, id: string): Promise<void> {
+  mutate(uid, (state) => {
     state.words = state.words.filter((entry) => entry.id !== id);
   });
 }
@@ -311,7 +329,7 @@ export type ImportInput = {
   folder?: string;
 };
 
-export async function importWords(rows: ImportInput[]): Promise<{
+export async function importWords(uid: string, rows: ImportInput[]): Promise<{
   words: Card[];
   imported: number;
   skipped: number;
@@ -338,7 +356,7 @@ export async function importWords(rows: ImportInput[]): Promise<{
       if (cached) {
         folderId = cached;
       } else {
-        folderId = await ensureFolderByName(folderName);
+        folderId = await ensureFolderByName(uid, folderName);
         folderCache.set(folderName.toLowerCase(), folderId);
       }
     }
@@ -357,7 +375,7 @@ export async function importWords(rows: ImportInput[]): Promise<{
     });
   }
 
-  mutate((state) => {
+  mutate(uid, (state) => {
     const stamp = nowIso();
     for (const card of created) {
       state.words.unshift({ ...card, created_at: stamp, updated_at: stamp });
@@ -383,6 +401,9 @@ export async function importWords(rows: ImportInput[]): Promise<{
 }
 
 /** Wipe local mock DB (browser only). */
-export function clearMockDatabase() {
-  window.localStorage.removeItem(STORAGE_KEY);
+export function clearMockDatabase(uid = "local-dev") {
+  window.localStorage.removeItem(storageKey(uid));
+  if (uid === "local-dev") {
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+  }
 }

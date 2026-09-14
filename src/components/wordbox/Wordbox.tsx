@@ -15,16 +15,17 @@ import {
 import type { Folder } from "../../types/card";
 import "./Wordbox.css";
 import Card from "./card/Card";
-import { clearPersistedLearningSession, LearningSession } from "./LearningSession";
 import {
+  PracticeSession,
+  clearPersistedLearningSession,
   clearPersistedReviewSession,
-  ReviewSession,
   type ReviewEndEarlyControls,
-} from "./ReviewSession";
+} from "./PracticeSession";
 import { LearningHub } from "./LearningHub";
 import { FolderPickerModal } from "./FolderPickerModal";
 import { FolderPickerPage } from "./FolderPickerPage";
 import { PronounceButton } from "./PronounceButton";
+import { getPracticeFormat, isQuestFormat, canStartPracticeFormat } from "../../lib/practiceFormats";
 import type { CardFilter, Section, SectionCounts, WordboxCard } from "./types";
 import { useEffect, useState } from "react";
 
@@ -40,8 +41,10 @@ interface WordboxProps {
   sessionScope: string;
   folders: Folder[];
   query: string;
+  dataError?: string | null;
   onQueryChange: (value: string) => void;
   onOpenNewCardForm: () => void;
+  onOpenQuickAdd?: () => void;
   onOpenImport: () => void;
   onOpenFolders?: () => void;
   filter: CardFilter;
@@ -91,8 +94,10 @@ export function Wordbox({
   sessionScope,
   folders,
   query,
+  dataError,
   onQueryChange,
   onOpenNewCardForm,
+  onOpenQuickAdd,
   onOpenImport,
   onOpenFolders,
   filter,
@@ -124,7 +129,7 @@ export function Wordbox({
     return active && active.scope === sessionScope ? active.mode : null;
   });
   const [isFolderPickerOpen, setIsFolderPickerOpen] = useState(false);
-  const [reviewEndEarly, setReviewEndEarly] = useState<ReviewEndEarlyControls | null>(
+  const [sessionEndEarly, setSessionEndEarly] = useState<ReviewEndEarlyControls | null>(
     null,
   );
 
@@ -147,6 +152,10 @@ export function Wordbox({
   }
 
   function startSession(mode: LearningMode) {
+    const format = getPracticeFormat(mode);
+    if (!canStartPracticeFormat(format, poolSize, reviewCards.length)) {
+      return;
+    }
     // Hub start = new run; drop any leftover deck from a previous attempt.
     clearPersistedLearningSession();
     clearPersistedReviewSession();
@@ -168,7 +177,7 @@ export function Wordbox({
       clearActiveLearningSession();
       setActiveSessionMode(null);
       setIsFolderPickerOpen(false);
-      setReviewEndEarly(null);
+      setSessionEndEarly(null);
       return;
     }
 
@@ -176,7 +185,7 @@ export function Wordbox({
     const active = readActiveLearningSession();
     // Reload / remount: resume the same Quest/Review for this folder.
     setActiveSessionMode(active && active.scope === sessionScope ? active.mode : null);
-    setReviewEndEarly(null);
+    setSessionEndEarly(null);
   }, [isLearningMode, sessionScope]);
 
   useEffect(() => {
@@ -204,9 +213,7 @@ export function Wordbox({
       ? isAllFolder
         ? "Pick a folder to continue."
         : null
-      : activeSessionMode === "review"
-        ? "Tap to reveal, then Bad / Good — or Next to skip."
-        : "Pick the correct meaning. Example stays under a spoiler.";
+      : getPracticeFormat(activeSessionMode).intro;
 
   return (
     <>
@@ -241,11 +248,11 @@ export function Wordbox({
             ) : null}
             {isLearningMode ? (
               <>
-                {activeSessionMode === "review" && reviewEndEarly ? (
+                {activeSessionMode === "review" && sessionEndEarly ? (
                   <button
                     className="ghost"
-                    disabled={!reviewEndEarly.canEndEarly}
-                    onClick={() => reviewEndEarly.endEarly()}
+                    disabled={!sessionEndEarly.canEndEarly}
+                    onClick={() => sessionEndEarly.endEarly()}
                     type="button"
                   >
                     End Review
@@ -257,6 +264,11 @@ export function Wordbox({
               </>
             ) : (
               <>
+                {!isAllFolder && onOpenQuickAdd ? (
+                  <button className="primary" onClick={onOpenQuickAdd} type="button">
+                    Quick add
+                  </button>
+                ) : null}
                 {filter === "all" ? (
                   <>
                     <button className="ghost" onClick={onOpenImport} type="button">
@@ -303,6 +315,12 @@ export function Wordbox({
             )}
           </div>
         </div>
+
+        {dataError ? (
+          <p className="dataErrorBanner" role="alert">
+            {dataError}
+          </p>
+        ) : null}
 
         {!isLearningMode ? (
           <nav className="contentSections" aria-label="Card sections">
@@ -384,24 +402,25 @@ export function Wordbox({
               preferredMode={preferredMode}
               onStart={startSession}
             />
-          ) : activeSessionMode === "review" ? (
-            <ReviewSession
-              cards={reviewCards}
-              sessionScope={sessionScope}
-              stats={{ due: dueCount, saved: savedCount, known: knownCount }}
-              onReviewGrade={onReviewGrade}
-              onExitLearning={onExitLearning}
-              hasAheadOfSchedule={hasAheadOfSchedule}
-              onEndEarlyControlsChange={setReviewEndEarly}
-            />
           ) : (
-            <LearningSession
-              cards={questCards}
+            <PracticeSession
+              formatId={activeSessionMode}
+              cards={
+                isQuestFormat(activeSessionMode) ? questCards : reviewCards
+              }
               optionPool={optionPool}
               sessionScope={sessionScope}
+              stats={
+                activeSessionMode === "review"
+                  ? { due: dueCount, saved: savedCount, known: knownCount }
+                  : undefined
+              }
               onReviewGrade={onReviewGrade}
               onExitLearning={onExitLearning}
               hasAheadOfSchedule={hasAheadOfSchedule}
+              onEndEarlyControlsChange={
+                activeSessionMode === "review" ? setSessionEndEarly : undefined
+              }
             />
           )
         ) : (
@@ -464,10 +483,10 @@ export function Wordbox({
                 {filter === "all" ? (
                   <button
                     className="primary emptyStateAction"
-                    onClick={onOpenNewCardForm}
+                    onClick={onOpenQuickAdd && !isAllFolder ? onOpenQuickAdd : onOpenNewCardForm}
                     type="button"
                   >
-                    Add a new word
+                    {onOpenQuickAdd && !isAllFolder ? "Quick add a word" : "Add a new word"}
                   </button>
                 ) : null}
               </div>

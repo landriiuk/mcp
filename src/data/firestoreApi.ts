@@ -9,11 +9,30 @@ import {
   type DocumentData,
 } from "firebase/firestore";
 import { getDb } from "../lib/firebase";
+import {
+  userFolderPath,
+  userFoldersPath,
+  userWordPath,
+  userWordsPath,
+} from "../lib/userDataPath";
 import type { Card, CardStatus, Draft, Folder } from "../types/card";
 import { reviewFieldsForStatus } from "../utils/reviewAlgorithm";
 
-const WORDS = "words";
-const FOLDERS = "folders";
+function wordsRef(uid: string) {
+  return collection(getDb(), userWordsPath(uid));
+}
+
+function foldersRef(uid: string) {
+  return collection(getDb(), userFoldersPath(uid));
+}
+
+function wordRef(uid: string, id: string) {
+  return doc(getDb(), userWordPath(uid, id));
+}
+
+function folderRef(uid: string, id: string) {
+  return doc(getDb(), userFolderPath(uid, id));
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -101,15 +120,15 @@ async function commitInChunks(
   await flush();
 }
 
-export async function listWords(): Promise<Card[]> {
-  const snapshot = await getDocs(collection(getDb(), WORDS));
+export async function listWords(uid: string): Promise<Card[]> {
+  const snapshot = await getDocs(wordsRef(uid));
   return snapshot.docs
     .map((entry) => normalizeCard(entry.id, entry.data()))
     .sort((a, b) => a.word.localeCompare(b.word));
 }
 
-export async function listFolders(): Promise<Folder[]> {
-  const snapshot = await getDocs(collection(getDb(), FOLDERS));
+export async function listFolders(uid: string): Promise<Folder[]> {
+  const snapshot = await getDocs(foldersRef(uid));
   return snapshot.docs
     .map((entry) => {
       const name = String(entry.data().name ?? entry.id).trim();
@@ -120,13 +139,13 @@ export async function listFolders(): Promise<Folder[]> {
 }
 
 /** Resolve folder by display name; create with UUID id if missing. Returns folder id. */
-export async function ensureFolderByName(name: string): Promise<string> {
+export async function ensureFolderByName(uid: string, name: string): Promise<string> {
   const normalized = name.trim();
   if (!normalized) {
     return "";
   }
 
-  const existing = await listFolders();
+  const existing = await listFolders(uid);
   const match = existing.find(
     (folder) => folder.name.toLowerCase() === normalized.toLowerCase(),
   );
@@ -135,14 +154,14 @@ export async function ensureFolderByName(name: string): Promise<string> {
   }
 
   const id = createId();
-  await setDoc(doc(getDb(), FOLDERS, id), {
+  await setDoc(folderRef(uid, id), {
     name: normalized,
     updated_at: nowIso(),
   });
   return id;
 }
 
-export async function createFolder(name: string): Promise<Folder> {
+export async function createFolder(uid: string, name: string): Promise<Folder> {
   const normalized = name.trim();
   if (!normalized) {
     throw new Error("Folder name is required.");
@@ -154,20 +173,24 @@ export async function createFolder(name: string): Promise<Folder> {
     throw new Error('"learning" is reserved. Choose another name.');
   }
 
-  const existing = await listFolders();
+  const existing = await listFolders(uid);
   if (existing.some((folder) => folder.name.toLowerCase() === normalized.toLowerCase())) {
     throw new Error("Folder already exists.");
   }
 
   const id = createId();
-  await setDoc(doc(getDb(), FOLDERS, id), {
+  await setDoc(folderRef(uid, id), {
     name: normalized,
     updated_at: nowIso(),
   });
   return { id, name: normalized };
 }
 
-export async function renameFolder(folderId: string, newName: string): Promise<void> {
+export async function renameFolder(
+  uid: string,
+  folderId: string,
+  newName: string,
+): Promise<void> {
   const normalized = newName.trim();
   if (!normalized) {
     throw new Error("Folder name is required.");
@@ -176,7 +199,7 @@ export async function renameFolder(folderId: string, newName: string): Promise<v
     throw new Error("Folder id is required.");
   }
 
-  const existing = await listFolders();
+  const existing = await listFolders(uid);
   if (
     existing.some(
       (folder) =>
@@ -186,31 +209,30 @@ export async function renameFolder(folderId: string, newName: string): Promise<v
     throw new Error("Folder already exists.");
   }
 
-  const folderRef = doc(getDb(), FOLDERS, folderId);
-  const snapshot = await getDoc(folderRef);
+  const targetFolderRef = folderRef(uid, folderId);
+  const snapshot = await getDoc(targetFolderRef);
   if (!snapshot.exists()) {
     throw new Error("Folder not found.");
   }
 
   await setDoc(
-    folderRef,
+    targetFolderRef,
     { name: normalized, updated_at: nowIso() },
     { merge: true },
   );
 }
 
-export async function deleteFolderDoc(folderId: string): Promise<void> {
+export async function deleteFolderDoc(uid: string, folderId: string): Promise<void> {
   const normalized = folderId.trim();
   if (!normalized) {
     throw new Error("Folder id is required.");
   }
 
-  const db = getDb();
-  const folderSnap = await getDoc(doc(db, FOLDERS, normalized));
+  const folderSnap = await getDoc(folderRef(uid, normalized));
   const legacyName = folderSnap.exists()
     ? String(folderSnap.data()?.name ?? normalized).trim()
     : normalized;
-  const wordsSnap = await getDocs(collection(db, WORDS));
+  const wordsSnap = await getDocs(wordsRef(uid));
 
   await commitInChunks((queue) => {
     for (const wordDoc of wordsSnap.docs) {
@@ -222,7 +244,7 @@ export async function deleteFolderDoc(folderId: string): Promise<void> {
       }
     }
     queue((batch) => {
-      batch.delete(doc(db, FOLDERS, normalized));
+      batch.delete(folderRef(uid, normalized));
     });
   });
 }
@@ -232,6 +254,7 @@ export async function deleteFolderDoc(folderId: string): Promise<void> {
  * Returns updated cards (and persists remaps).
  */
 export async function reconcileCardFolderIds(
+  uid: string,
   cards: Card[],
   folders: Folder[],
 ): Promise<Card[]> {
@@ -258,7 +281,7 @@ export async function reconcileCardFolderIds(
     await commitInChunks((queue) => {
       for (const update of updates) {
         queue((batch) => {
-          batch.update(doc(getDb(), WORDS, update.id), {
+          batch.update(wordRef(uid, update.id), {
             folder: update.folderId,
             updated_at: nowIso(),
           });
@@ -274,12 +297,12 @@ export async function reconcileCardFolderIds(
  * Remove legacy system folder "General" and clear it from cards.
  * Safe to call on every load.
  */
-export async function purgeLegacyGeneralFolder(): Promise<{
+export async function purgeLegacyGeneralFolder(uid: string): Promise<{
   folders: Folder[];
   cards: Card[];
   removed: boolean;
 }> {
-  const [folders, cards] = await Promise.all([listFolders(), listWords()]);
+  const [folders, cards] = await Promise.all([listFolders(uid), listWords(uid)]);
   const generalFolders = folders.filter(
     (folder) =>
       folder.id === "General" || folder.name.trim().toLowerCase() === "general",
@@ -296,8 +319,7 @@ export async function purgeLegacyGeneralFolder(): Promise<{
     return { folders, cards, removed: false };
   }
 
-  const db = getDb();
-  const wordsSnap = await getDocs(collection(db, WORDS));
+  const wordsSnap = await getDocs(wordsRef(uid));
 
   await commitInChunks((queue) => {
     for (const wordDoc of wordsSnap.docs) {
@@ -314,7 +336,7 @@ export async function purgeLegacyGeneralFolder(): Promise<{
     }
     for (const folder of generalFolders) {
       queue((batch) => {
-        batch.delete(doc(db, FOLDERS, folder.id));
+        batch.delete(folderRef(uid, folder.id));
       });
     }
   });
@@ -335,7 +357,10 @@ export async function purgeLegacyGeneralFolder(): Promise<{
   return { folders: nextFolders, cards: nextCards, removed: true };
 }
 
-export async function createWord(draft: Draft & Partial<Card>): Promise<Card> {
+export async function createWord(
+  uid: string,
+  draft: Draft & Partial<Card>,
+): Promise<Card> {
   const folder = draft.folder?.trim() ?? "";
   const review = reviewFieldsForStatus(draft.status || "new");
   const id = createId();
@@ -357,11 +382,14 @@ export async function createWord(draft: Draft & Partial<Card>): Promise<Card> {
         : review.correct_streak,
   };
 
-  await setDoc(doc(getDb(), WORDS, id), cardToDoc({ ...card, created_at, updated_at: created_at }));
+  await setDoc(
+    wordRef(uid, id),
+    cardToDoc({ ...card, created_at, updated_at: created_at }),
+  );
   return card;
 }
 
-export async function saveWord(card: Card): Promise<Card> {
+export async function saveWord(uid: string, card: Card): Promise<Card> {
   const folder = card.folder?.trim() ?? "";
   const next: Card = {
     ...card,
@@ -374,21 +402,21 @@ export async function saveWord(card: Card): Promise<Card> {
     correct_streak: Number(card.correct_streak) || 0,
   };
 
-  const existing = await getDoc(doc(getDb(), WORDS, card.id));
+  const existing = await getDoc(wordRef(uid, card.id));
   const created_at = existing.exists()
     ? String(existing.data()?.created_at ?? nowIso())
     : nowIso();
 
   await setDoc(
-    doc(getDb(), WORDS, card.id),
+    wordRef(uid, card.id),
     cardToDoc({ ...next, created_at, updated_at: nowIso() }),
     { merge: true },
   );
   return next;
 }
 
-export async function deleteWord(id: string): Promise<void> {
-  await deleteDoc(doc(getDb(), WORDS, id));
+export async function deleteWord(uid: string, id: string): Promise<void> {
+  await deleteDoc(wordRef(uid, id));
 }
 
 export type ImportInput = {
@@ -400,7 +428,7 @@ export type ImportInput = {
   folder?: string;
 };
 
-export async function importWords(rows: ImportInput[]): Promise<{
+export async function importWords(uid: string, rows: ImportInput[]): Promise<{
   words: Card[];
   imported: number;
   skipped: number;
@@ -427,7 +455,7 @@ export async function importWords(rows: ImportInput[]): Promise<{
       if (cached) {
         folderId = cached;
       } else {
-        folderId = await ensureFolderByName(folderName);
+        folderId = await ensureFolderByName(uid, folderName);
         folderCache.set(folderName.toLowerCase(), folderId);
       }
     }
@@ -451,7 +479,7 @@ export async function importWords(rows: ImportInput[]): Promise<{
       const created_at = nowIso();
       queue((batch) => {
         batch.set(
-          doc(getDb(), WORDS, card.id),
+          wordRef(uid, card.id),
           cardToDoc({ ...card, created_at, updated_at: created_at }),
         );
       });

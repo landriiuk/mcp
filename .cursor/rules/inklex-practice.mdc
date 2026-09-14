@@ -1,0 +1,40 @@
+---
+description: InkLex practice sessions — Quest/Review shell, SRS, Capture MVP. Apply when changing learning/practice code.
+globs: src/components/wordbox/**/*.{ts,tsx},src/hooks/usePracticeSession.ts,src/lib/practiceFormats.ts,src/lib/learningMode.ts,src/utils/reviewAlgorithm.ts,src/utils/parseClipboardLexeme.ts,docs/algorithms/**/*.md,docs/product/**/*.md
+alwaysApply: false
+---
+
+# InkLex — Practice & Capture agent
+
+Канон: `docs/algorithms/due-first-session.md`, `docs/product/PRODUCT-PLAN.md`, `docs/product/CAPTURE-MVP.md`.
+
+## Architecture (do not regress)
+
+- Formats live in `src/lib/practiceFormats.ts` registry (`PracticeFormatMeta`).
+- Shared shell: `usePracticeSession` + `PracticeSession` — **no** new copy-paste session components.
+- New practice mode = registry entry + prompt branch in `PracticeSession` (or Prompt adapter), same deck/grade wiring.
+- Modes: `quest` | `quest-reverse` | `quest-typed` | `review` (`inklex.learningMode`).
+
+## Session rules
+
+- Quest pool: `new`/`learning`, max 10, due-first then rest. Known excluded.
+- **Reverse Quest**: `minPoolSize = 3` (`MIN_REVERSE_QUEST_WORDS`). Hub disables Start below that.
+- Progress `N/N` advances on leave (answer / requeue / Skip|Next). At **N/N**, next grade or Skip/Next **ends** session (leftover → Skipped).
+- **Again** writes immediately on fail (resets streak); may requeue once unless already at N/N budget.
+- **Good/Easy**: streak += 1; at **3** → Known. Grade via functional `setCards` + latest card state (no stale streak).
+- Review: flip + Bad / Good / Easy; **End Review** in header; hide End controls on final screen.
+- **Typed Quest wrong**: show answer + **Continue** (manual). Do **not** auto-advance on miss. Correct may short-auto-advance.
+
+## Capture (ставка A)
+
+- T1/T2 shipped: `QuickAdd` + `parseClipboardLexeme` (`word — meaning` / tab / plain).
+- Quick add only in a **folder** (not All). Full `CardEditor` remains for rich edit.
+- Next: T3 sentence→word, T4 post-save Quest nudge — see `CAPTURE-MVP.md`.
+
+## Do not
+
+- Reintroduce separate LearningSession/ReviewSession logic trees.
+- Defer `again` until retry success (breaks Known streak honesty).
+- Let N/N hang with leftover queue (must force summary).
+- Auto-skip past Typed miss feedback.
+- Put Known into Quest pool or build full SM-2 without an explicit product ask.

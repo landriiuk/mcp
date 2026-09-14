@@ -228,6 +228,212 @@
   gap: 10px;
 }
 
+.sidebarAccount {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.sidebarAccountAvatar {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.sidebarAccountAvatar.isFallback {
+  display: grid;
+  place-items: center;
+  background: var(--green-soft);
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.sidebarAccountText {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  flex: 1;
+}
+
+.sidebarAccountText strong,
+.sidebarAccountText span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebarAccountText strong {
+  font-size: 13px;
+}
+
+.sidebarAccountText span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.sidebarLogout {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.sidebarLogout:hover {
+  background: var(--ghost-bg);
+  color: var(--ink);
+}
+
+.sidebarLogout svg {
+  width: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sidebar.isCollapsed .sidebarAccount {
+  justify-content: center;
+}
+
+.sidebar.isCollapsed .sidebarAccountText,
+.sidebar.isCollapsed .sidebarLogout {
+  display: none;
+}
+
+.authShell {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--app-bg);
+}
+
+.authCard {
+  width: min(440px, 100%);
+  display: grid;
+  gap: 22px;
+  padding: 30px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--white);
+  box-shadow: var(--shadow);
+}
+
+.authBrand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.authBrand img {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+}
+
+.authCard h1 {
+  margin: 4px 0 8px;
+  font-size: clamp(28px, 5vw, 38px);
+}
+
+.authLead {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.authGoogle,
+.authSubmit {
+  width: 100%;
+  min-height: 46px;
+}
+
+.authGoogle {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--white);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.authGoogle:hover:not(:disabled) {
+  background: var(--ghost-bg);
+}
+
+.authDivider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.authDivider::before,
+.authDivider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: var(--line);
+}
+
+.authForm {
+  display: grid;
+  gap: 14px;
+}
+
+.authForm label {
+  display: grid;
+  gap: 7px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.authError {
+  color: var(--red);
+  font-size: 13px;
+}
+
+.authSwitch {
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+}
+
+.authLink {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--green);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.authLoading {
+  display: grid;
+  place-items: center;
+  gap: 12px;
+  color: var(--muted);
+}
+
 .folderAllRow {
   display: flex;
   align-items: center;
@@ -473,6 +679,75 @@ button {
   padding: 24px;
   box-shadow: var(--shadow);
   border: 1px solid var(--line);
+}
+
+.modalWindowCompact {
+  width: min(440px, 100%);
+  max-height: min(92vh, 640px);
+  padding: 22px;
+}
+
+.quickAdd {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.quickAddHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.quickAddHeader h2 {
+  margin: 4px 0 0;
+  font-size: 22px;
+}
+
+.quickAddClose {
+  flex-shrink: 0;
+}
+
+.quickAddWordRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.quickAddField {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.quickAddPaste {
+  margin-bottom: 2px;
+  white-space: nowrap;
+}
+
+.quickAddExampleToggle {
+  align-self: flex-start;
+  padding-inline: 0;
+}
+
+.quickAddError {
+  margin: 0;
+  color: var(--red);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.quickAddStatus {
+  margin: 0;
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .cardsGrid {
@@ -906,6 +1181,15 @@ select:focus-visible {
   .sidebar.isCollapsed .folderInlineActions,
   .sidebar.isCollapsed .folderInlineError {
     display: revert;
+  }
+
+  .sidebar.isCollapsed .sidebarAccount {
+    justify-content: flex-start;
+  }
+
+  .sidebar.isCollapsed .sidebarAccountText,
+  .sidebar.isCollapsed .sidebarLogout {
+    display: grid;
   }
 
   .sidebar.isCollapsed .folderInitial {
