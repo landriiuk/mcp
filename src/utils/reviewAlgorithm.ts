@@ -327,12 +327,42 @@ export function buildQuestDeck<T extends ReviewCard>(
   return deck;
 }
 
-/** @deprecated Use buildQuestDeck — kept as alias for older call sites. */
-export function buildSessionDeck<T extends ReviewCard>(
-  cards: T[],
-  options?: { maxSize?: number; maxNew?: number; now?: Date; shuffle?: boolean },
-): T[] {
-  return buildQuestDeck(cards, options);
+/** Normalize text for MCQ / typed recall comparisons. */
+export function normalizeAnswer(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** Near-duplicate meanings (exact, or one contains the other when both are long enough). */
+export function isNearDuplicateMeaning(a: string, b: string): boolean {
+  const na = normalizeAnswer(a);
+  const nb = normalizeAnswer(b);
+  if (!na || !nb) {
+    return true;
+  }
+  if (na === nb) {
+    return true;
+  }
+  if (na.length < 4 || nb.length < 4) {
+    return false;
+  }
+  return na.includes(nb) || nb.includes(na);
+}
+
+function pickUniqueDistractors(candidates: string[], correct: string, need: number): string[] {
+  const picked: string[] = [];
+  for (const candidate of shuffle(candidates)) {
+    if (picked.length >= need) {
+      break;
+    }
+    if (isNearDuplicateMeaning(candidate, correct)) {
+      continue;
+    }
+    if (picked.some((existing) => isNearDuplicateMeaning(existing, candidate))) {
+      continue;
+    }
+    picked.push(candidate);
+  }
+  return picked;
 }
 
 /** Build multiple-choice meanings: correct + distractors from other cards. */
@@ -346,9 +376,40 @@ export function buildMeaningOptions(
   const distractors = pool
     .filter((card) => card.id !== currentId)
     .map((card) => card.meaning.trim())
-    .filter((meaning) => meaning && meaning.toLowerCase() !== normalizedCorrect.toLowerCase());
+    .filter(Boolean);
 
   const uniqueDistractors = Array.from(new Set(distractors));
-  const picked = shuffle(uniqueDistractors).slice(0, Math.max(0, count - 1));
+  const picked = pickUniqueDistractors(
+    uniqueDistractors,
+    normalizedCorrect,
+    Math.max(0, count - 1),
+  );
   return shuffle([normalizedCorrect, ...picked]);
+}
+
+/** Build multiple-choice words: correct + distractors (reverse MCQ). */
+export function buildWordOptions(
+  correctWord: string,
+  pool: Array<{ id: string; word: string }>,
+  currentId: string,
+  count = 4,
+): string[] {
+  const normalizedCorrect = correctWord.trim();
+  const distractors = pool
+    .filter((card) => card.id !== currentId)
+    .map((card) => card.word.trim())
+    .filter(Boolean);
+
+  const uniqueDistractors = Array.from(new Set(distractors));
+  const picked = pickUniqueDistractors(
+    uniqueDistractors,
+    normalizedCorrect,
+    Math.max(0, count - 1),
+  );
+  return shuffle([normalizedCorrect, ...picked]);
+}
+
+/** Typed answer matches expected (trim / case / whitespace). */
+export function answersMatch(input: string, expected: string): boolean {
+  return normalizeAnswer(input) === normalizeAnswer(expected);
 }

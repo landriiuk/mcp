@@ -1,9 +1,17 @@
 import { clearJsonSession, loadJsonSession, saveJsonSession } from "./sessionPersist";
 
-export type LearningMode = "quest" | "review";
+/** Practice formats available from Learning Hub. */
+export type LearningMode = "quest" | "quest-reverse" | "quest-typed" | "review";
 
 const STORAGE_KEY = "inklex.learningMode";
 const ACTIVE_SESSION_KEY = "inklex.learning.active";
+
+const VALID_MODES = new Set<LearningMode>([
+  "quest",
+  "quest-reverse",
+  "quest-typed",
+  "review",
+]);
 
 export type ActiveLearningSession = {
   scope: string;
@@ -13,8 +21,8 @@ export type ActiveLearningSession = {
 export function readLearningMode(): LearningMode {
   try {
     const value = localStorage.getItem(STORAGE_KEY);
-    if (value === "quest" || value === "review") {
-      return value;
+    if (value && VALID_MODES.has(value as LearningMode)) {
+      return value as LearningMode;
     }
   } catch {
     // ignore
@@ -35,10 +43,7 @@ export function readActiveLearningSession(): ActiveLearningSession | null {
   if (!value) {
     return null;
   }
-  if (
-    typeof value.scope !== "string" ||
-    (value.mode !== "quest" && value.mode !== "review")
-  ) {
+  if (typeof value.scope !== "string" || !VALID_MODES.has(value.mode)) {
     return null;
   }
   return value;

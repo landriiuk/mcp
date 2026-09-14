@@ -1,4 +1,9 @@
 import type { LearningMode } from "../../lib/learningMode";
+import {
+  canStartPracticeFormat,
+  PRACTICE_FORMATS,
+  practiceFormatUnavailableHint,
+} from "../../lib/practiceFormats";
 import { CORRECT_STREAK_TO_KNOWN, MAX_SESSION_SIZE } from "../../utils/reviewAlgorithm";
 
 type LearningHubProps = {
@@ -30,9 +35,6 @@ export function LearningHub({
       ? `All ${folderWordCount} words in this folder`
       : "No words in this folder yet";
 
-  const canStartQuest = sessionSize > 0;
-  const canStartReview = folderWordCount > 0;
-
   return (
     <div className="learningHubPage" aria-labelledby="learning-hub-title">
       <div className="learningHubHeader">
@@ -41,62 +43,55 @@ export function LearningHub({
         </p>
       </div>
 
-      <div className="learningHubModes">
-        <article
-          className={`learningHubCard${preferredMode === "quest" ? " isPreferred" : ""}`}
-        >
-          <div className="learningHubCardTop">
-            <h3>Quest</h3>
-            <span className="learningHubBadge">Multiple choice</span>
-          </div>
-          <p>
-            See the word, then pick the correct meaning from four options. Fast recognition
-            practice — good for warming up and checking what you already know.
-          </p>
-          <ul>
-            <li>Up to {MAX_SESSION_SIZE} random Cards/Learning words per session</li>
-            <li>Due words first, then the rest of the pool — start another quest anytime</li>
-            <li>
-              {CORRECT_STREAK_TO_KNOWN} correct in a row → Known; wrong resets the streak
-            </li>
-          </ul>
-          <p className="learningHubCardMeta">{questHint}</p>
-          <button
-            className="primary"
-            disabled={!canStartQuest}
-            onClick={() => onStart("quest")}
-            type="button"
-          >
-            Start Quest
-          </button>
-        </article>
+      <div className="learningHubModes learningHubModesWide">
+        {PRACTICE_FORMATS.map((format) => {
+          const isQuest = format.pool === "quest";
+          const canStart = canStartPracticeFormat(format, poolSize, folderWordCount);
+          const unavailable = practiceFormatUnavailableHint(
+            format,
+            poolSize,
+            folderWordCount,
+          );
+          const hint = canStart
+            ? isQuest
+              ? questHint
+              : reviewHint
+            : (unavailable ?? (isQuest ? questHint : reviewHint));
+          const bullets = format.bullets.map((bullet) =>
+            bullet.includes("3 correct")
+              ? bullet.replace("3 correct", `${CORRECT_STREAK_TO_KNOWN} correct`)
+              : bullet.includes(`Up to ${MAX_SESSION_SIZE}`)
+                ? bullet
+                : bullet,
+          );
 
-        <article
-          className={`learningHubCard${preferredMode === "review" ? " isPreferred" : ""}`}
-        >
-          <div className="learningHubCardTop">
-            <h3>Review</h3>
-            <span className="learningHubBadge">Self-grade</span>
-          </div>
-          <p>
-            Cards alternate between word and meaning. Tap to reveal, then rate how well you
-            recalled it: Bad or Good. Next skips without rating.
-          </p>
-          <ul>
-            <li>All words in the current folder</li>
-            <li>Prompt alternates: word ↔ meaning (no example)</li>
-            <li>Bad / Good update the schedule; Next skips</li>
-          </ul>
-          <p className="learningHubCardMeta">{reviewHint}</p>
-          <button
-            className="primary"
-            disabled={!canStartReview}
-            onClick={() => onStart("review")}
-            type="button"
-          >
-            Start Review
-          </button>
-        </article>
+          return (
+            <article
+              className={`learningHubCard${preferredMode === format.id ? " isPreferred" : ""}`}
+              key={format.id}
+            >
+              <div className="learningHubCardTop">
+                <h3>{format.title}</h3>
+                <span className="learningHubBadge">{format.badge}</span>
+              </div>
+              <p>{format.description}</p>
+              <ul>
+                {bullets.map((bullet) => (
+                  <li key={bullet}>{bullet}</li>
+                ))}
+              </ul>
+              <p className="learningHubCardMeta">{hint}</p>
+              <button
+                className="primary"
+                disabled={!canStart}
+                onClick={() => onStart(format.id)}
+                type="button"
+              >
+                Start {format.title}
+              </button>
+            </article>
+          );
+        })}
       </div>
     </div>
   );

@@ -13,7 +13,7 @@ Design reference: `reverso-mvp-design-options.html`, **Vocabulary Desk** option 
 | Layer | Technologies |
 |-------|----------------|
 | Frontend | React 19, Vite, TypeScript, per-component CSS |
-| Data | Firebase Firestore (client SDK) in prod. **Local:** mocked DB in `localStorage` (`VITE_USE_MOCK_DB=true`) — no network to Firebase/emulator. |
+| Data | Firebase Auth + Firestore (client SDK) in prod; per-user `users/{uid}/words|folders`. **Local:** mocked DB in `localStorage` (`VITE_USE_MOCK_DB=true`) with mock user — no Firebase network. |
 | Legacy | Next.js API in `backend/` — optional / deprecated |
 
 ### Running locally
@@ -25,6 +25,15 @@ npm run dev              # frontend → :5173 (mock DB by default)
 Clear mock data: open `http://localhost:5173/?clearDb=1`, or DevTools → Application → Local Storage → remove `inklex.mock.v1`.
 
 Never put `VITE_USE_MOCK_DB=true` or the emulator flag on Vercel.
+
+### Authentication and ownership
+
+- Production login: Google or email/password through Firebase Auth.
+- The app is guarded until Firebase restores the auth session.
+- Firestore data is always scoped to `users/{uid}/words` and
+  `users/{uid}/folders`; global collections are legacy-only and denied by rules.
+- Sidebar account footer owns logout. Logout clears active learning sessions.
+- Auth/data migration runbook: [`docs/product/AUTH-MIGRATION.md`](../product/AUTH-MIGRATION.md).
 
 ---
 
@@ -68,10 +77,10 @@ backend/
 Full session rules: [`docs/algorithms/due-first-session.md`](../algorithms/due-first-session.md).
 
 - **All** → folder picker before learning; practice always in a concrete folder
-- **Start Learning** (folder) → Learning Hub as **page content** on `/:encodedFolderId/learning` (Quest | Review; preference in `inklex.learningMode`)
-- **Quest** pool: `new` + `learning` only; up to **10**; due first, then fill from the rest (ahead-of-schedule included) so another Quest can start immediately
-- **Review** — all words in the folder; Again / Good / Easy
-- **Again**: `correct_streak = 0`, soft demotion, `next_review_at = now + 10m`, status `learning`
+- **Start Learning** (folder) → Learning Hub as **page content** on `/:encodedFolderId/learning` (Quest / Reverse / Typed / Review; preference in `inklex.learningMode`)
+- **Quest formats** pool: `new` + `learning` only; up to **10**; due first, then fill from the rest (ahead-of-schedule included)
+- **Review** — all words in the folder; Bad / Good / Easy
+- **Again**: `correct_streak = 0`, soft demotion, `next_review_at = now + 10m`, status `learning` (written immediately on fail, even if the card requeues once in-session)
 - **Good / Easy**: `correct_streak += 1`; at **3** → Known @ 30d; else stay learning with soft spacing
 - Drag to Known / manual Known in editor: `interval_days=30`, `next_review_at=now+30d`, streak reset
 
@@ -89,7 +98,7 @@ Full session rules: [`docs/algorithms/due-first-session.md`](../algorithms/due-f
    - **Cards** — all cards in the folder
    - **Learning** — `status === learning`
    - **Known** — `status === known`
-3. **Learning mode** — from All: folder picker → `/:encodedFolderId/learning`; hub page then Quest or Review (see `docs/algorithms/due-first-session.md`)
+3. **Learning mode** — from All: folder picker → `/:encodedFolderId/learning`; hub page then Quest / Reverse / Typed / Review (see `docs/algorithms/due-first-session.md`)
 4. **Search** — matches word, meaning, example, status, folder, tags (hidden in learning mode)
 
 Reserved folder name: `learning`. Tab and sidebar counts are scoped to the **active folder**.

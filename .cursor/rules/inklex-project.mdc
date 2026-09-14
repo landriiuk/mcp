@@ -14,9 +14,10 @@ Vocabulary app (InkLex): word cards, folders, statuses `new` | `learning` | `kno
 ## Stack
 
 - Frontend: React + Vite + TS → `src/`
-- Data: Firebase Firestore (client SDK) — collections `words`, `folders`
-- **Local DB:** mocked `localStorage` (`VITE_USE_MOCK_DB=true`). No Firebase/emulator network.
+- Data: Firebase Auth + Firestore client SDK — `users/{uid}/words|folders`
+- **Local DB:** mocked `localStorage` with `local-dev` user (`VITE_USE_MOCK_DB=true`). No Firebase/emulator network.
 - **Prod/Preview:** real `VITE_FIREBASE_*` on Vercel; mock/emulator flags must be off
+- Auth: Google + email/password; app guard; sidebar logout; strict owner-only Firestore rules
 - Legacy Next API in `backend/` is optional / deprecated for local experiments
 - Env: see `.env.example`
 
@@ -25,7 +26,8 @@ Vocabulary app (InkLex): word cards, folders, statuses `new` | `learning` | `kno
 - Sidebar: **All** + **+**; no folder bullets; inline create/rename; name limit **50** chars; errors **below input**; Esc / blur = cancel
 - Mobile: burger → folder drawer (backdrop / Esc / × close)
 - Content: **Cards / Learning / Known** tabs above search (counts scoped to active folder)
-- **Start Learning**: з All — модал вибору папки; з папки → `/:encodedFolderId/learning` з Learning Hub (контент сторінки: Quest | Review). Quest: new/learning ≤10 (due first, потім rest); Known після 3 correct або drag; `inklex.learningMode`; див. `docs/algorithms/due-first-session.md`
+- **Start Learning**: з All — модал вибору папки; з папки → `/:encodedFolderId/learning` з Learning Hub (Quest / Reverse / Typed / Review). Quest-формати: new/learning ≤10 (due first, потім rest); Known після 3 correct або drag; `inklex.learningMode`; див. `docs/algorithms/due-first-session.md`
+- **Practice agent**: при змінах learning/quest/review — rule `.cursor/rules/inklex-practice.mdc` (shell, N/N end, Typed Continue, Reverse min 3, Capture Quick Add)
 - Folder URL: `/` (All) or `/:encodedFolderId` (base64url folder id; sidebar shows name)
 - Card: red **delete** chip on the right
 - Drag card → folder (sidebar) or tab (Cards=`new` / Learning / Known)

@@ -9,86 +9,86 @@ async function firestore() {
   return import("./firestoreApi");
 }
 
-export async function listWords() {
+export async function listWords(uid: string) {
   if (useMockDb()) {
-    return mockApi.listWords();
+    return mockApi.listWords(uid);
   }
-  return (await firestore()).listWords();
+  return (await firestore()).listWords(uid);
 }
 
-export async function listFolders() {
+export async function listFolders(uid: string) {
   if (useMockDb()) {
-    return mockApi.listFolders();
+    return mockApi.listFolders(uid);
   }
-  return (await firestore()).listFolders();
+  return (await firestore()).listFolders(uid);
 }
 
-export async function ensureFolderByName(name: string) {
+export async function ensureFolderByName(uid: string, name: string) {
   if (useMockDb()) {
-    return mockApi.ensureFolderByName(name);
+    return mockApi.ensureFolderByName(uid, name);
   }
-  return (await firestore()).ensureFolderByName(name);
+  return (await firestore()).ensureFolderByName(uid, name);
 }
 
-export async function createFolder(name: string) {
+export async function createFolder(uid: string, name: string) {
   if (useMockDb()) {
-    return mockApi.createFolder(name);
+    return mockApi.createFolder(uid, name);
   }
-  return (await firestore()).createFolder(name);
+  return (await firestore()).createFolder(uid, name);
 }
 
-export async function renameFolder(folderId: string, newName: string) {
+export async function renameFolder(uid: string, folderId: string, newName: string) {
   if (useMockDb()) {
-    return mockApi.renameFolder(folderId, newName);
+    return mockApi.renameFolder(uid, folderId, newName);
   }
-  return (await firestore()).renameFolder(folderId, newName);
+  return (await firestore()).renameFolder(uid, folderId, newName);
 }
 
-export async function deleteFolderDoc(folderId: string) {
+export async function deleteFolderDoc(uid: string, folderId: string) {
   if (useMockDb()) {
-    return mockApi.deleteFolderDoc(folderId);
+    return mockApi.deleteFolderDoc(uid, folderId);
   }
-  return (await firestore()).deleteFolderDoc(folderId);
+  return (await firestore()).deleteFolderDoc(uid, folderId);
 }
 
-export async function reconcileCardFolderIds(cards: Card[], folders: Folder[]) {
+export async function reconcileCardFolderIds(uid: string, cards: Card[], folders: Folder[]) {
   if (useMockDb()) {
-    return mockApi.reconcileCardFolderIds(cards, folders);
+    return mockApi.reconcileCardFolderIds(uid, cards, folders);
   }
-  return (await firestore()).reconcileCardFolderIds(cards, folders);
+  return (await firestore()).reconcileCardFolderIds(uid, cards, folders);
 }
 
-export async function purgeLegacyGeneralFolder() {
+export async function purgeLegacyGeneralFolder(uid: string) {
   if (useMockDb()) {
-    return mockApi.purgeLegacyGeneralFolder();
+    return mockApi.purgeLegacyGeneralFolder(uid);
   }
-  return (await firestore()).purgeLegacyGeneralFolder();
+  return (await firestore()).purgeLegacyGeneralFolder(uid);
 }
 
-export async function createWord(draft: Draft & Partial<Card>) {
+export async function createWord(uid: string, draft: Draft & Partial<Card>) {
   if (useMockDb()) {
-    return mockApi.createWord(draft);
+    return mockApi.createWord(uid, draft);
   }
-  return (await firestore()).createWord(draft);
+  return (await firestore()).createWord(uid, draft);
 }
 
-export async function saveWord(card: Card) {
+export async function saveWord(uid: string, card: Card) {
   if (useMockDb()) {
-    return mockApi.saveWord(card);
+    return mockApi.saveWord(uid, card);
   }
-  return (await firestore()).saveWord(card);
+  return (await firestore()).saveWord(uid, card);
 }
 
-export async function deleteWord(id: string) {
+export async function deleteWord(uid: string, id: string) {
   if (useMockDb()) {
-    return mockApi.deleteWord(id);
+    return mockApi.deleteWord(uid, id);
   }
-  return (await firestore()).deleteWord(id);
+  return (await firestore()).deleteWord(uid, id);
 }
 
-export async function importWords(rows: ImportInput[]) {
+export async function importWords(uid: string, rows: ImportInput[]) {
   if (useMockDb()) {
-    return mockApi.importWords(rows);
+    return mockApi.importWords(uid, rows);
   }
-  return (await firestore()).importWords(rows);
+  return (await firestore()).importWords(uid, rows);
 }

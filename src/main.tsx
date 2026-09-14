@@ -3,6 +3,9 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import './index.css'
 import App from './App.js'
+import { AuthProvider } from './context/AuthProvider'
+import { AuthPage } from './components/auth/AuthPage'
+import { RequireAuth } from './components/auth/RequireAuth'
 
 /** One-shot wipe: open /?clearDb=1 to clear mock DB + InkLex browser storage. */
 function wipeLocalInklexDataIfRequested(): boolean {
@@ -42,12 +45,23 @@ function wipeLocalInklexDataIfRequested(): boolean {
 if (!wipeLocalInklexDataIfRequested()) {
   createRoot(document.getElementById('root')).render(
     <StrictMode>
-      <BrowserRouter>
-        <Routes>
-          {/* Single App instance so / ↔ /learning does not remount and drop the session. */}
-          <Route path="*" element={<App />} />
-        </Routes>
-      </BrowserRouter>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<AuthPage mode="login" />} />
+            <Route path="/signup" element={<AuthPage mode="signup" />} />
+            {/* Single App instance so / ↔ /learning does not remount and drop the session. */}
+            <Route
+              path="*"
+              element={
+                <RequireAuth>
+                  <App />
+                </RequireAuth>
+              }
+            />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
     </StrictMode>,
   )
 }

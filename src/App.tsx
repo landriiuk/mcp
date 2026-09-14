@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import "./App.css";
 import { Wordbox } from "./components/wordbox/Wordbox";
 import { CardEditor } from "./components/wordbox/add-card/CardEditor";
+import { QuickAdd, type QuickAddDraft } from "./components/wordbox/add-card/QuickAdd";
 import { ImportWords } from "./components/wordbox/import/ImportWords";
 import { FolderSidebar } from "./components/sidebar/FolderSidebar";
 import { FOLDER_NAME_MAX_LENGTH, FOLDER_NAME_TOO_LONG_ERROR } from "./constants";
@@ -18,8 +19,8 @@ import {
   renameFolder,
   saveWord,
 } from "./data/api";
-import { sampleCards, sampleFolders } from "./data/sampleCards";
 import { isDataStoreConfigured, useMockDb } from "./lib/dataMode";
+import { useAuth } from "./hooks/useAuth";
 import type { Card, Draft, Folder } from "./types/card";
 import { type ImportWordRow } from "./utils/importWords";
 import {
@@ -51,6 +52,8 @@ const emptyDraft: Draft = {
 function App() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, signOut } = useAuth();
+  const uid = user?.uid ?? "";
   const {
     folderId: activeFolder,
     isLearningMode,
@@ -68,6 +71,7 @@ function App() {
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -148,7 +152,17 @@ function App() {
   }
 
   useEffect(() => {
+    if (!uid) {
+      setCards([]);
+      setFolders([]);
+      setIsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
     async function loadWords() {
+      setIsLoading(true);
       try {
         if (!isDataStoreConfigured()) {
           throw new Error("Data store is not configured");
@@ -158,7 +172,7 @@ function App() {
           console.info("[InkLex] Local mock DB (localStorage). No Firebase network.");
         }
 
-        const purged = await purgeLegacyGeneralFolder();
+        const purged = await purgeLegacyGeneralFolder(uid);
         let cardsData = purged.cards;
         let foldersData = purged.folders.filter(
           (folder) => folder.name.trim().toLowerCase() !== "general",
@@ -168,24 +182,30 @@ function App() {
             ? { ...card, folder: "" }
             : card,
         );
-        cardsData = await reconcileCardFolderIds(cardsData, foldersData);
+        cardsData = await reconcileCardFolderIds(uid, cardsData, foldersData);
 
+        if (cancelled) return;
         setCards(cardsData);
         setFolders(foldersData);
         setLoadError(null);
-      } catch {
+      } catch (error) {
+        if (cancelled) return;
+        console.error("[InkLex] data load failed", error);
         setLoadError(
-          "Unable to load data store. Check .env (VITE_USE_MOCK_DB or VITE_FIREBASE_*). Using sample words.",
+          "Unable to load your vocabulary. Check the connection and try again.",
         );
-        setCards(sampleCards);
-        setFolders([...sampleFolders]);
+        setCards([]);
+        setFolders([]);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     }
 
     void loadWords();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [uid]);
 
   useEffect(() => {
     if (isLoading) {
@@ -536,7 +556,7 @@ function App() {
       }
 
       try {
-        const created = await createFolder(normalizedName);
+        const created = await createFolder(uid, normalizedName);
         setFolders((currentFolders) =>
           [...currentFolders, created].sort((a, b) => a.name.localeCompare(b.name)),
         );
@@ -571,7 +591,7 @@ function App() {
     }
 
     try {
-      await renameFolder(editingFolder, normalizedName);
+      await renameFolder(uid, editingFolder, normalizedName);
 
       setFolders((currentFolders) =>
         currentFolders
@@ -593,7 +613,7 @@ function App() {
 
   async function deleteFolder(folderId: string) {
     try {
-      await deleteFolderDoc(folderId);
+      await deleteFolderDoc(uid, folderId);
 
       setCards((currentCards) =>
         currentCards.map((card) =>
@@ -620,8 +640,23 @@ function App() {
   }
 
   function openNewCardForm() {
+    setIsQuickAddOpen(false);
     setEditingId(null);
     setIsEditorOpen(true);
+  }
+
+  function openQuickAdd() {
+    if (activeFolder === "all") {
+      openNewCardForm();
+      return;
+    }
+    setIsEditorOpen(false);
+    setEditingId(null);
+    setIsQuickAddOpen(true);
+  }
+
+  function closeQuickAdd() {
+    setIsQuickAddOpen(false);
   }
 
   function openImportModal() {
@@ -646,6 +681,7 @@ function App() {
     }
 
     const data = await importWords(
+      uid,
       rows.map((row) => ({
         word: row.word,
         meaning: row.meaning,
@@ -665,7 +701,7 @@ function App() {
     if (importedWords.length > 0) {
       setCards((current) => [...importedWords, ...current]);
       try {
-        const refreshedFolders = await listFolders();
+        const refreshedFolders = await listFolders(uid);
         setFolders(refreshedFolders);
       } catch (error) {
         console.error("[InkLex] listFolders after import failed", error);
@@ -707,7 +743,7 @@ function App() {
 
     try {
       if (editingId) {
-        const updatedCard = await saveWord({
+        const updatedCard = await saveWord(uid, {
           id: editingId,
           ...payload,
         });
@@ -715,7 +751,7 @@ function App() {
           current.map((entry) => (entry.id === editingId ? updatedCard : entry)),
         );
       } else {
-        const createdCard = await createWord(payload);
+        const createdCard = await createWord(uid, payload);
         setCards((current) => [createdCard, ...current]);
       }
       resetForm();
@@ -724,9 +760,31 @@ function App() {
     }
   }
 
+  async function handleQuickAddSubmit(draft: QuickAddDraft) {
+    const word = draft.word.trim();
+    const meaning = draft.meaning.trim();
+    if (!word || !meaning) {
+      return;
+    }
+
+    const review = reviewFieldsForStatus("new");
+    const createdCard = await createWord(uid, {
+      word,
+      meaning,
+      example: draft.example.trim(),
+      status: "new",
+      tags: [],
+      folder: draft.folder.trim(),
+      interval_days: review.interval_days,
+      next_review_at: review.next_review_at,
+      correct_streak: review.correct_streak,
+    });
+    setCards((current) => [createdCard, ...current]);
+  }
+
   async function deleteCard(cardId: string) {
     try {
-      await deleteWord(cardId);
+      await deleteWord(uid, cardId);
     } catch {
       // Still remove from UI if already gone remotely.
     }
@@ -738,31 +796,34 @@ function App() {
   }
 
   async function handleReviewGrade(cardId: string, grade: ReviewGrade) {
-    const card = cards.find((entry) => entry.id === cardId);
-    if (!card) {
+    let baseline: Card | null = null;
+    let optimisticCard: Card | null = null;
+
+    setCards((current) => {
+      const card = current.find((entry) => entry.id === cardId);
+      if (!card) {
+        return current;
+      }
+      baseline = card;
+      const review = gradeCard(card, grade);
+      optimisticCard = { ...card, ...review };
+      return current.map((item) => (item.id === cardId ? optimisticCard! : item));
+    });
+
+    if (!baseline || !optimisticCard) {
       return;
     }
 
-    const review = gradeCard(card, grade);
-    const optimisticCard = { ...card, ...review };
-
-    setCards((current) =>
-      current.map((item) => (item.id === cardId ? optimisticCard : item)),
-    );
-
-    const rollback = () => {
-      setCards((current) =>
-        current.map((item) => (item.id === cardId ? card : item)),
-      );
-    };
-
+    const rollbackCard = baseline;
     try {
-      const updatedCard = await saveWord(optimisticCard);
+      const updatedCard = await saveWord(uid, optimisticCard);
       setCards((current) =>
         current.map((item) => (item.id === cardId ? updatedCard : item)),
       );
     } catch {
-      rollback();
+      setCards((current) =>
+        current.map((item) => (item.id === cardId ? rollbackCard : item)),
+      );
     }
   }
 
@@ -783,7 +844,7 @@ function App() {
     );
 
     try {
-      const updatedCard = await saveWord(optimisticCard);
+      const updatedCard = await saveWord(uid, optimisticCard);
       setCards((current) =>
         current.map((item) => (item.id === cardId ? updatedCard : item)),
       );
@@ -810,7 +871,7 @@ function App() {
     );
 
     try {
-      const updatedCard = await saveWord(optimisticCard);
+      const updatedCard = await saveWord(uid, optimisticCard);
       setCards((current) =>
         current.map((item) => (item.id === cardId ? updatedCard : item)),
       );
@@ -819,6 +880,19 @@ function App() {
         current.map((item) => (item.id === cardId ? card : item)),
       );
     }
+  }
+
+  async function handleSignOut() {
+    setCards([]);
+    setFolders([]);
+    setIsMobileNavOpen(false);
+    const sessionKeys: string[] = [];
+    for (let index = 0; index < sessionStorage.length; index += 1) {
+      const key = sessionStorage.key(index);
+      if (key?.startsWith("inklex.")) sessionKeys.push(key);
+    }
+    for (const key of sessionKeys) sessionStorage.removeItem(key);
+    await signOut();
   }
 
   return (
@@ -856,6 +930,11 @@ function App() {
         onFolderKeyDown={handleFolderInputKeyDown}
         onFolderBlur={handleFolderInputBlur}
         onFolderPaste={handleFolderPaste}
+        accountName={user?.displayName || user?.email || "InkLex user"}
+        accountEmail={user?.email ?? null}
+        accountPhotoUrl={user?.photoURL ?? null}
+        isMockAccount={Boolean(user?.isMock)}
+        onSignOut={() => void handleSignOut()}
       />
 
       <Wordbox
@@ -866,8 +945,10 @@ function App() {
         sessionScope={activeFolder}
         folders={folders}
         query={query}
+        dataError={loadError}
         onQueryChange={setQuery}
         onOpenNewCardForm={openNewCardForm}
+        onOpenQuickAdd={openQuickAdd}
         onOpenImport={openImportModal}
         onOpenFolders={() => setIsMobileNavOpen(true)}
         filter={filter}
@@ -900,7 +981,7 @@ function App() {
               onSubmit={handleSubmit}
               onReset={resetForm}
               onCreateFolder={async (name) => {
-                const created = await createFolder(name);
+                const created = await createFolder(uid, name);
                 setFolders((currentFolders) =>
                   [...currentFolders, created].sort((a, b) => a.name.localeCompare(b.name)),
                 );
@@ -910,6 +991,24 @@ function App() {
           </div>
         </div>
       )}
+
+      {isQuickAddOpen && activeFolder !== "all" ? (
+        <div className="modalOverlay" onClick={closeQuickAdd}>
+          <div
+            className="modalWindow modalWindowCompact"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <QuickAdd
+              folderId={activeFolder}
+              folderName={
+                folders.find((folder) => folder.id === activeFolder)?.name ?? "folder"
+              }
+              onClose={closeQuickAdd}
+              onSubmit={handleQuickAddSubmit}
+            />
+          </div>
+        </div>
+      ) : null}
 
       {isImportOpen && (
         <div className="modalOverlay" onClick={closeImportModal}>

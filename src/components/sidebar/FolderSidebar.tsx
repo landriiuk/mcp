@@ -33,6 +33,11 @@ type FolderSidebarProps = {
   onFolderKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
   onFolderBlur: () => void;
   onFolderPaste: (event: React.ClipboardEvent<HTMLInputElement>) => void;
+  accountName: string;
+  accountEmail: string | null;
+  accountPhotoUrl: string | null;
+  isMockAccount: boolean;
+  onSignOut: () => void;
 };
 
 function folderDropHandlers(
@@ -102,6 +107,11 @@ export function FolderSidebar({
   onFolderKeyDown,
   onFolderBlur,
   onFolderPaste,
+  accountName,
+  accountEmail,
+  accountPhotoUrl,
+  isMockAccount,
+  onSignOut,
 }: FolderSidebarProps) {
   const [dropTarget, setDropTarget] = useState<string | null>(null);
 
@@ -290,6 +300,33 @@ export function FolderSidebar({
             </p>
           ) : null}
         </div>
+      </div>
+
+      <div className="sidebarAccount">
+        {accountPhotoUrl ? (
+          <img className="sidebarAccountAvatar" src={accountPhotoUrl} alt="" />
+        ) : (
+          <span className="sidebarAccountAvatar isFallback" aria-hidden="true">
+            {accountName.trim().charAt(0).toUpperCase() || "U"}
+          </span>
+        )}
+        <div className="sidebarAccountText">
+          <strong>{accountName}</strong>
+          <span>{isMockAccount ? "Mock DB" : accountEmail}</span>
+        </div>
+        {!isMockAccount ? (
+          <button
+            className="sidebarLogout"
+            onClick={onSignOut}
+            type="button"
+            title="Log out"
+            aria-label="Log out"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M10 5H5v14h5M14 8l4 4-4 4M18 12H9" />
+            </svg>
+          </button>
+        ) : null}
       </div>
     </aside>
   );
