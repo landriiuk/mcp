@@ -92,3 +92,38 @@ export async function importWords(uid: string, rows: ImportInput[]) {
   }
   return (await firestore()).importWords(uid, rows);
 }
+
+export async function publishFolderSnapshot(uid: string, folderId: string) {
+  if (useMockDb()) {
+    return mockApi.publishFolderSnapshot(uid, folderId);
+  }
+  return (await firestore()).publishFolderSnapshot(uid, folderId);
+}
+
+export async function getPublicSnapshot(shareId: string) {
+  if (useMockDb()) {
+    return mockApi.getPublicSnapshot(shareId);
+  }
+  return (await firestore()).getPublicSnapshot(shareId);
+}
+
+export async function listPublishedSnapshots(uid: string, folderId?: string) {
+  if (useMockDb()) {
+    return mockApi.listPublishedSnapshots(uid, folderId);
+  }
+  return (await firestore()).listPublishedSnapshots(uid, folderId);
+}
+
+export async function revokeSharedSnapshot(uid: string, shareId: string) {
+  if (useMockDb()) {
+    return mockApi.revokeSharedSnapshot(uid, shareId);
+  }
+  return (await firestore()).revokeSharedSnapshot(uid, shareId);
+}
+
+export async function copySharedSnapshot(uid: string, shareId: string) {
+  if (useMockDb()) {
+    return mockApi.copySharedSnapshot(uid, shareId);
+  }
+  return (await firestore()).copySharedSnapshot(uid, shareId);
+}

@@ -10,12 +10,31 @@ import {
 } from "firebase/firestore";
 import { getDb } from "../lib/firebase";
 import {
+  sharedSnapshotPath,
+  sharedSnapshotWordPath,
+  sharedSnapshotWordsPath,
   userFolderPath,
   userFoldersPath,
+  userImportedSnapshotPath,
+  userPublishedSnapshotPath,
+  userPublishedSnapshotsPath,
   userWordPath,
   userWordsPath,
 } from "../lib/userDataPath";
+import {
+  MAX_SHARED_SNAPSHOT_WORDS,
+  nextAvailableFolderName,
+} from "../lib/sharedSnapshots";
 import type { Card, CardStatus, Draft, Folder } from "../types/card";
+import type {
+  CopySnapshotResult,
+  PublishedSnapshot,
+  PublishSnapshotResult,
+  SharedSnapshot,
+  SharedSnapshotMeta,
+  SharedSnapshotStatus,
+  SharedSnapshotWord,
+} from "../types/sharedSnapshot";
 import { reviewFieldsForStatus } from "../utils/reviewAlgorithm";
 
 function wordsRef(uid: string) {
@@ -32,6 +51,26 @@ function wordRef(uid: string, id: string) {
 
 function folderRef(uid: string, id: string) {
   return doc(getDb(), userFolderPath(uid, id));
+}
+
+function snapshotRef(shareId: string) {
+  return doc(getDb(), sharedSnapshotPath(shareId));
+}
+
+function snapshotWordsRef(shareId: string) {
+  return collection(getDb(), sharedSnapshotWordsPath(shareId));
+}
+
+function publishedSnapshotsRef(uid: string) {
+  return collection(getDb(), userPublishedSnapshotsPath(uid));
+}
+
+function publishedSnapshotRef(uid: string, shareId: string) {
+  return doc(getDb(), userPublishedSnapshotPath(uid, shareId));
+}
+
+function importedSnapshotRef(uid: string, shareId: string) {
+  return doc(getDb(), userImportedSnapshotPath(uid, shareId));
 }
 
 function nowIso() {
@@ -501,5 +540,262 @@ export async function importWords(uid: string, rows: ImportInput[]): Promise<{
     skipped: errors.length,
     errors,
     targetFolderId: ranked[0]?.[0] ?? "",
+  };
+}
+
+function normalizeSnapshotMeta(
+  id: string,
+  data: DocumentData,
+): SharedSnapshotMeta {
+  return {
+    id,
+    folderName: String(data.folder_name ?? "Shared words"),
+    wordCount: Number(data.word_count) || 0,
+    publishedAt: String(data.published_at ?? ""),
+    status: String(data.status ?? "revoked") as SharedSnapshotStatus,
+  };
+}
+
+function normalizeSnapshotWord(
+  id: string,
+  data: DocumentData,
+): SharedSnapshotWord {
+  return {
+    id,
+    word: String(data.word ?? ""),
+    meaning: String(data.meaning ?? ""),
+    example: String(data.example ?? ""),
+    tags: Array.isArray(data.tags)
+      ? data.tags
+          .filter((tag: unknown): tag is string => typeof tag === "string")
+          .slice(0, 3)
+      : [],
+  };
+}
+
+export async function publishFolderSnapshot(
+  uid: string,
+  folderId: string,
+): Promise<PublishSnapshotResult> {
+  const [folderSnapshot, cards] = await Promise.all([
+    getDoc(folderRef(uid, folderId)),
+    listWords(uid),
+  ]);
+  if (!folderSnapshot.exists()) {
+    throw new Error("Folder not found.");
+  }
+
+  const folderName = String(folderSnapshot.data().name ?? "").trim();
+  const sourceCards = cards.filter((card) => card.folder === folderId);
+  if (sourceCards.length === 0) {
+    throw new Error("Add at least one word before sharing this folder.");
+  }
+  if (sourceCards.length > MAX_SHARED_SNAPSHOT_WORDS) {
+    throw new Error(
+      `A shared folder can contain up to ${MAX_SHARED_SNAPSHOT_WORDS} words.`,
+    );
+  }
+
+  const shareId = createId();
+  const publishedAt = nowIso();
+  const meta = {
+    owner_uid: uid,
+    folder_name: folderName,
+    word_count: sourceCards.length,
+    published_at: publishedAt,
+    schema_version: 1,
+    status: "publishing",
+  };
+  const index = {
+    source_folder_id: folderId,
+    folder_name: folderName,
+    word_count: sourceCards.length,
+    published_at: publishedAt,
+    status: "publishing",
+  };
+
+  try {
+    const initialization = writeBatch(getDb());
+    initialization.set(snapshotRef(shareId), meta);
+    initialization.set(publishedSnapshotRef(uid, shareId), index);
+    await initialization.commit();
+
+    await commitInChunks((queue) => {
+      for (const card of sourceCards) {
+        const snapshotWordId = createId();
+        queue((batch) => {
+          batch.set(doc(getDb(), sharedSnapshotWordPath(shareId, snapshotWordId)), {
+            word: card.word,
+            meaning: card.meaning,
+            example: card.example,
+            tags: card.tags.slice(0, 3),
+          });
+        });
+      }
+    });
+
+    const activation = writeBatch(getDb());
+    activation.update(snapshotRef(shareId), { status: "active" });
+    activation.update(publishedSnapshotRef(uid, shareId), { status: "active" });
+    await activation.commit();
+  } catch (error) {
+    const cleanup = writeBatch(getDb());
+    cleanup.update(snapshotRef(shareId), { status: "revoked" });
+    cleanup.update(publishedSnapshotRef(uid, shareId), { status: "revoked" });
+    await cleanup.commit().catch(() => undefined);
+    throw error;
+  }
+
+  return { shareId, folderName, wordCount: sourceCards.length };
+}
+
+export async function getPublicSnapshot(
+  shareId: string,
+): Promise<SharedSnapshot> {
+  const metaSnapshot = await getDoc(snapshotRef(shareId));
+  if (!metaSnapshot.exists() || metaSnapshot.data().status !== "active") {
+    throw new Error("This shared folder is unavailable.");
+  }
+
+  const wordsSnapshot = await getDocs(snapshotWordsRef(shareId));
+  const words = wordsSnapshot.docs
+    .map((entry) => normalizeSnapshotWord(entry.id, entry.data()))
+    .filter((word) => word.word && word.meaning)
+    .sort((a, b) => a.word.localeCompare(b.word));
+  const meta = normalizeSnapshotMeta(metaSnapshot.id, metaSnapshot.data());
+  if (words.length === 0 || words.length !== meta.wordCount) {
+    throw new Error("This shared folder is incomplete or unavailable.");
+  }
+
+  return {
+    meta,
+    words,
+  };
+}
+
+export async function listPublishedSnapshots(
+  uid: string,
+  folderId?: string,
+): Promise<PublishedSnapshot[]> {
+  const snapshot = await getDocs(publishedSnapshotsRef(uid));
+  return snapshot.docs
+    .map((entry) => {
+      const data = entry.data();
+      return {
+        ...normalizeSnapshotMeta(entry.id, data),
+        sourceFolderId: String(data.source_folder_id ?? ""),
+      };
+    })
+    .filter((entry) => !folderId || entry.sourceFolderId === folderId)
+    .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
+}
+
+export async function revokeSharedSnapshot(
+  uid: string,
+  shareId: string,
+): Promise<void> {
+  const indexSnapshot = await getDoc(publishedSnapshotRef(uid, shareId));
+  if (!indexSnapshot.exists()) {
+    throw new Error("Shared folder not found.");
+  }
+  if (indexSnapshot.data().status === "revoked") {
+    return;
+  }
+
+  const batch = writeBatch(getDb());
+  batch.update(snapshotRef(shareId), { status: "revoked" });
+  batch.update(publishedSnapshotRef(uid, shareId), { status: "revoked" });
+  await batch.commit();
+}
+
+export async function copySharedSnapshot(
+  uid: string,
+  shareId: string,
+): Promise<CopySnapshotResult> {
+  const receiptRef = importedSnapshotRef(uid, shareId);
+  const existingReceipt = await getDoc(receiptRef);
+  if (existingReceipt.exists()) {
+    const existingFolderId = String(existingReceipt.data().folder_id ?? "");
+    const existingFolder = existingFolderId
+      ? await getDoc(folderRef(uid, existingFolderId))
+      : null;
+    if (existingFolder?.exists()) {
+      return {
+        folderId: existingFolderId,
+        folderName: String(
+          existingReceipt.data().folder_name ?? existingFolder.data().name ?? "",
+        ),
+        imported: 0,
+        alreadyImported: true,
+      };
+    }
+    await deleteDoc(receiptRef);
+  }
+
+  const snapshot = await getPublicSnapshot(shareId);
+  const existingFolders = await listFolders(uid);
+  const folderName = nextAvailableFolderName(
+    snapshot.meta.folderName,
+    existingFolders.map((folder) => folder.name),
+  );
+  const folder: Folder = { id: createId(), name: folderName };
+  const stamp = nowIso();
+  const batch = writeBatch(getDb());
+  batch.set(folderRef(uid, folder.id), {
+    name: folder.name,
+    updated_at: stamp,
+  });
+  batch.set(receiptRef, {
+    folder_id: folder.id,
+    folder_name: folder.name,
+    imported_at: stamp,
+  });
+
+  for (const source of snapshot.words) {
+    const card: Card = {
+      id: createId(),
+      word: source.word.trim(),
+      meaning: source.meaning.trim(),
+      example: source.example.trim(),
+      tags: source.tags.slice(0, 3),
+      folder: folder.id,
+      status: "new",
+      interval_days: 0,
+      next_review_at: null,
+      correct_streak: 0,
+    };
+    batch.set(
+      wordRef(uid, card.id),
+      cardToDoc({ ...card, created_at: stamp, updated_at: stamp }),
+    );
+  }
+  try {
+    await batch.commit();
+  } catch (error) {
+    const winningReceipt = await getDoc(receiptRef);
+    if (winningReceipt.exists()) {
+      const winningFolderId = String(winningReceipt.data().folder_id ?? "");
+      const winningFolder = winningFolderId
+        ? await getDoc(folderRef(uid, winningFolderId))
+        : null;
+      if (winningFolder?.exists()) {
+        return {
+          folderId: winningFolderId,
+          folderName: String(
+            winningReceipt.data().folder_name ?? winningFolder.data().name ?? "",
+          ),
+          imported: 0,
+          alreadyImported: true,
+        };
+      }
+    }
+    throw error;
+  }
+
+  return {
+    folderId: folder.id,
+    folderName: folder.name,
+    imported: snapshot.words.length,
+    alreadyImported: false,
   };
 }

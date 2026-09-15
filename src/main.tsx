@@ -6,6 +6,7 @@ import App from './App.js'
 import { AuthProvider } from './context/AuthProvider'
 import { AuthPage } from './components/auth/AuthPage'
 import { RequireAuth } from './components/auth/RequireAuth'
+import { SharePreviewPage } from './components/share/SharePreviewPage'
 
 /** One-shot wipe: open /?clearDb=1 to clear mock DB + InkLex browser storage. */
 function wipeLocalInklexDataIfRequested(): boolean {
@@ -50,6 +51,7 @@ if (!wipeLocalInklexDataIfRequested()) {
           <Routes>
             <Route path="/login" element={<AuthPage mode="login" />} />
             <Route path="/signup" element={<AuthPage mode="signup" />} />
+            <Route path="/share/:shareId" element={<SharePreviewPage />} />
             {/* Single App instance so / ↔ /learning does not remount and drop the session. */}
             <Route
               path="*"

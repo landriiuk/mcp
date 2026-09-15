@@ -1,7 +1,19 @@
 import type { Card, CardStatus, Draft, Folder } from "../types/card";
+import {
+  MAX_SHARED_SNAPSHOT_WORDS,
+  nextAvailableFolderName,
+} from "../lib/sharedSnapshots";
+import type {
+  CopySnapshotResult,
+  PublishedSnapshot,
+  PublishSnapshotResult,
+  SharedSnapshot,
+  SharedSnapshotWord,
+} from "../types/sharedSnapshot";
 import { reviewFieldsForStatus } from "../utils/reviewAlgorithm";
 
 const LEGACY_STORAGE_KEY = "inklex.mock.v1";
+const SHARED_STORAGE_KEY = "inklex.sharedSnapshots.v1";
 
 function storageKey(uid: string) {
   return `${LEGACY_STORAGE_KEY}.${uid}`;
@@ -10,6 +22,22 @@ function storageKey(uid: string) {
 type MockState = {
   folders: Folder[];
   words: Array<Card & { created_at: string; updated_at: string }>;
+  importedSnapshots: Array<{
+    shareId: string;
+    folderId: string;
+    folderName: string;
+    importedAt: string;
+  }>;
+};
+
+type StoredSharedSnapshot = {
+  id: string;
+  ownerUid: string;
+  sourceFolderId: string;
+  folderName: string;
+  publishedAt: string;
+  status: "publishing" | "active" | "revoked";
+  words: SharedSnapshotWord[];
 };
 
 function nowIso() {
@@ -21,7 +49,7 @@ function createId() {
 }
 
 function emptyState(): MockState {
-  return { folders: [], words: [] };
+  return { folders: [], words: [], importedSnapshots: [] };
 }
 
 function readState(uid: string): MockState {
@@ -37,6 +65,9 @@ function readState(uid: string): MockState {
     return {
       folders: Array.isArray(parsed.folders) ? parsed.folders : [],
       words: Array.isArray(parsed.words) ? parsed.words : [],
+      importedSnapshots: Array.isArray(parsed.importedSnapshots)
+        ? parsed.importedSnapshots
+        : [],
     };
   } catch {
     return emptyState();
@@ -55,6 +86,21 @@ function mutate(uid: string, updater: (state: MockState) => void) {
   updater(state);
   writeState(uid, state);
   return state;
+}
+
+function readSharedSnapshots(): StoredSharedSnapshot[] {
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(SHARED_STORAGE_KEY) ?? "[]",
+    );
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSharedSnapshots(snapshots: StoredSharedSnapshot[]) {
+  window.localStorage.setItem(SHARED_STORAGE_KEY, JSON.stringify(snapshots));
 }
 
 export async function listWords(uid: string): Promise<Card[]> {
@@ -400,10 +446,191 @@ export async function importWords(uid: string, rows: ImportInput[]): Promise<{
   };
 }
 
+export async function publishFolderSnapshot(
+  uid: string,
+  folderId: string,
+): Promise<PublishSnapshotResult> {
+  const state = readState(uid);
+  const folder = state.folders.find((entry) => entry.id === folderId);
+  if (!folder) {
+    throw new Error("Folder not found.");
+  }
+
+  const sourceWords = state.words.filter((word) => word.folder === folderId);
+  if (sourceWords.length === 0) {
+    throw new Error("Add at least one word before sharing this folder.");
+  }
+  if (sourceWords.length > MAX_SHARED_SNAPSHOT_WORDS) {
+    throw new Error(
+      `A shared folder can contain up to ${MAX_SHARED_SNAPSHOT_WORDS} words.`,
+    );
+  }
+
+  const shareId = createId();
+  const snapshot: StoredSharedSnapshot = {
+    id: shareId,
+    ownerUid: uid,
+    sourceFolderId: folderId,
+    folderName: folder.name,
+    publishedAt: nowIso(),
+    status: "active",
+    words: sourceWords.map((word) => ({
+      id: createId(),
+      word: word.word,
+      meaning: word.meaning,
+      example: word.example,
+      tags: word.tags.slice(0, 3),
+    })),
+  };
+  writeSharedSnapshots([snapshot, ...readSharedSnapshots()]);
+  return {
+    shareId,
+    folderName: folder.name,
+    wordCount: sourceWords.length,
+  };
+}
+
+export async function getPublicSnapshot(
+  shareId: string,
+): Promise<SharedSnapshot> {
+  const snapshot = readSharedSnapshots().find(
+    (entry) => entry.id === shareId && entry.status === "active",
+  );
+  if (!snapshot) {
+    throw new Error("This shared folder is unavailable.");
+  }
+  const sourceWordCount = Array.isArray(snapshot.words) ? snapshot.words.length : 0;
+  const words = Array.isArray(snapshot.words)
+    ? snapshot.words.filter(
+        (word) =>
+          typeof word?.word === "string" &&
+          word.word.trim() &&
+          typeof word?.meaning === "string" &&
+          word.meaning.trim(),
+      )
+    : [];
+  if (words.length === 0 || words.length !== sourceWordCount) {
+    throw new Error("This shared folder is incomplete or unavailable.");
+  }
+  return {
+    meta: {
+      id: snapshot.id,
+      folderName: snapshot.folderName,
+      wordCount: snapshot.words.length,
+      publishedAt: snapshot.publishedAt,
+      status: snapshot.status,
+    },
+    words: [...words].sort((a, b) => a.word.localeCompare(b.word)),
+  };
+}
+
+export async function listPublishedSnapshots(
+  uid: string,
+  folderId?: string,
+): Promise<PublishedSnapshot[]> {
+  return readSharedSnapshots()
+    .filter(
+      (snapshot) =>
+        snapshot.ownerUid === uid &&
+        (!folderId || snapshot.sourceFolderId === folderId),
+    )
+    .map((snapshot) => ({
+      id: snapshot.id,
+      sourceFolderId: snapshot.sourceFolderId,
+      folderName: snapshot.folderName,
+      wordCount: snapshot.words.length,
+      publishedAt: snapshot.publishedAt,
+      status: snapshot.status,
+    }))
+    .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
+}
+
+export async function revokeSharedSnapshot(
+  uid: string,
+  shareId: string,
+): Promise<void> {
+  const snapshots = readSharedSnapshots();
+  const snapshot = snapshots.find((entry) => entry.id === shareId);
+  if (!snapshot || snapshot.ownerUid !== uid) {
+    throw new Error("Shared folder not found.");
+  }
+  snapshot.status = "revoked";
+  writeSharedSnapshots(snapshots);
+}
+
+export async function copySharedSnapshot(
+  uid: string,
+  shareId: string,
+): Promise<CopySnapshotResult> {
+  const currentState = readState(uid);
+  const receipt = currentState.importedSnapshots.find(
+    (entry) => entry.shareId === shareId,
+  );
+  if (receipt) {
+    const existingFolder = currentState.folders.find(
+      (folder) => folder.id === receipt.folderId,
+    );
+    if (existingFolder) {
+      return {
+        folderId: existingFolder.id,
+        folderName: existingFolder.name,
+        imported: 0,
+        alreadyImported: true,
+      };
+    }
+  }
+
+  const snapshot = await getPublicSnapshot(shareId);
+  const existing = currentState.folders;
+  const folderName = nextAvailableFolderName(
+    snapshot.meta.folderName,
+    existing.map((folder) => folder.name),
+  );
+  const folder: Folder = { id: createId(), name: folderName };
+  const stamp = nowIso();
+
+  mutate(uid, (state) => {
+    state.importedSnapshots = state.importedSnapshots.filter(
+      (entry) => entry.shareId !== shareId,
+    );
+    state.folders.push(folder);
+    state.importedSnapshots.push({
+      shareId,
+      folderId: folder.id,
+      folderName: folder.name,
+      importedAt: stamp,
+    });
+    for (const source of snapshot.words) {
+      state.words.unshift({
+        id: createId(),
+        word: source.word.trim(),
+        meaning: source.meaning.trim(),
+        example: source.example.trim(),
+        tags: source.tags.slice(0, 3),
+        folder: folder.id,
+        status: "new",
+        interval_days: 0,
+        next_review_at: null,
+        correct_streak: 0,
+        created_at: stamp,
+        updated_at: stamp,
+      });
+    }
+  });
+
+  return {
+    folderId: folder.id,
+    folderName: folder.name,
+    imported: snapshot.words.length,
+    alreadyImported: false,
+  };
+}
+
 /** Wipe local mock DB (browser only). */
 export function clearMockDatabase(uid = "local-dev") {
   window.localStorage.removeItem(storageKey(uid));
   if (uid === "local-dev") {
     window.localStorage.removeItem(LEGACY_STORAGE_KEY);
   }
+  window.localStorage.removeItem(SHARED_STORAGE_KEY);
 }

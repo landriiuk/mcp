@@ -226,6 +226,8 @@
 .folderPanel {
   display: grid;
   gap: 10px;
+  min-width: 0;
+  width: 100%;
 }
 
 .sidebarAccount {
@@ -479,11 +481,13 @@
 .folderList {
   display: grid;
   gap: 6px;
+  min-width: 0;
 }
 
 .folderRowGroup {
   display: grid;
   gap: 4px;
+  min-width: 0;
 }
 
 .folderInlineError {
@@ -494,9 +498,12 @@
 }
 
 .folderRow {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+  width: 100%;
   padding: 2px;
   border-radius: var(--radius);
 }
@@ -527,6 +534,7 @@
 
 .folderButton {
   flex: 1;
+  min-width: 0;
   min-height: 36px;
   padding: 0 8px;
   border-radius: var(--radius);
@@ -538,6 +546,15 @@
   border: 1px solid transparent;
   text-align: left;
   font-weight: 500;
+  overflow: hidden;
+}
+
+.folderLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .folderButton strong,
@@ -584,6 +601,25 @@ body.isCardDragging .folderRow {
 .folderInlineActions {
   display: flex;
   gap: 2px;
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  padding-left: 6px;
+  background: var(--sidebar-bg);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition: opacity 120ms ease;
+}
+
+.folderRow.active .folderInlineActions {
+  background: var(--white);
+}
+
+.folderRow:hover .folderInlineActions,
+.folderRow:focus-within .folderInlineActions {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .folderInlineButton {
@@ -685,6 +721,235 @@ button {
   width: min(440px, 100%);
   max-height: min(92vh, 640px);
   padding: 22px;
+}
+
+.shareModal {
+  display: grid;
+  gap: 18px;
+}
+
+.shareModal:focus {
+  outline: none;
+}
+
+.shareModalHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.shareModalHeader h2 {
+  margin: 3px 0 0;
+  font-family: var(--font-display);
+  font-size: 28px;
+}
+
+.shareModalClose {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius);
+  background: var(--ghost-bg);
+  color: var(--muted);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.shareModalLead,
+.shareModalStatus,
+.shareModalError {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.shareLinkRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.shareLinkRow input {
+  min-width: 0;
+  height: 42px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0 11px;
+  color: var(--ink);
+  background: var(--paper);
+}
+
+.shareLinkRow button,
+.sharePublishButton {
+  min-height: 42px;
+  padding-inline: 16px;
+}
+
+.shareRevokeButton {
+  width: fit-content;
+  padding: 0;
+  background: transparent;
+  color: var(--red);
+  font-weight: 600;
+}
+
+.shareRetryButton {
+  width: fit-content;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--white);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.shareModalError {
+  color: var(--red);
+}
+
+.sharePreviewShell {
+  min-height: 100svh;
+  background: var(--app-bg);
+}
+
+.sharePreviewTopbar {
+  min-height: 72px;
+  padding: 12px clamp(20px, 5vw, 72px);
+  border-bottom: 1px solid var(--line);
+  background: var(--sidebar-bg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.sharePreviewBrand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.sharePreviewBrand img {
+  object-fit: contain;
+}
+
+.sharePreviewAccount {
+  max-width: 280px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sharePreviewContent {
+  width: min(1100px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: clamp(36px, 7vw, 78px) 0;
+}
+
+.sharePreviewHero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 28px;
+  margin-bottom: 32px;
+}
+
+.sharePreviewHero h1,
+.sharePreviewMessage h1 {
+  margin: 6px 0 8px;
+  font-family: var(--font-display);
+  font-size: clamp(38px, 6vw, 62px);
+  line-height: 1;
+}
+
+.sharePreviewHero p:not(.eyebrow),
+.sharePreviewMessage p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.sharePreviewAdd {
+  min-height: 46px;
+  padding-inline: 20px;
+}
+
+.sharePreviewGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.sharePreviewCard {
+  min-width: 0;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--white);
+}
+
+.sharePreviewCard h2 {
+  margin: 0 0 10px;
+  font-family: var(--font-display);
+  font-size: 27px;
+}
+
+.sharePreviewMeaning {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+
+.sharePreviewExample {
+  margin: 15px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  color: var(--example-text);
+  background: var(--example-bg);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.sharePreviewTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 15px;
+}
+
+.sharePreviewTags span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: var(--chip-text);
+  background: var(--chip-bg);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.sharePreviewError {
+  margin: -15px 0 24px;
+  color: var(--red);
+}
+
+.sharePreviewMessage {
+  min-height: 50svh;
+  display: grid;
+  place-content: center;
+  justify-items: start;
+  gap: 14px;
+}
+
+.sharePreviewHome {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
 }
 
 .quickAdd {
@@ -1212,6 +1477,21 @@ select:focus-visible {
     justify-content: flex-start;
   }
 
+  .folderInlineActions {
+    position: static;
+    margin-left: auto;
+    padding-left: 0;
+    background: transparent;
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
+
+  .folderInlineButton {
+    width: 44px;
+    height: 44px;
+  }
+
   .sidebar.isMobileOpen {
     transform: translateY(0);
   }
@@ -1234,6 +1514,10 @@ select:focus-visible {
   .wordboxGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .sharePreviewGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 720px) {
@@ -1254,6 +1538,27 @@ select:focus-visible {
     width: 100%;
     padding: 18px;
     border-radius: 18px;
+  }
+
+  .shareLinkRow {
+    grid-template-columns: 1fr;
+  }
+
+  .sharePreviewTopbar {
+    padding-inline: 16px;
+  }
+
+  .sharePreviewHero {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .sharePreviewAdd {
+    width: 100%;
+  }
+
+  .sharePreviewGrid {
+    grid-template-columns: 1fr;
   }
 
   .formRow {
