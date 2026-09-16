@@ -273,6 +273,20 @@ service cloud.firestore {
         && request.resource.data.schema_version == 1;
     }
 
+    function validPracticeStats() {
+      return request.resource.data.keys().hasOnly([
+        'quest_completed_count',
+        'last_quest_completed_at',
+        'updated_at',
+        'schema_version'
+      ])
+        && request.resource.data.quest_completed_count is int
+        && request.resource.data.quest_completed_count >= 1
+        && request.resource.data.last_quest_completed_at is string
+        && request.resource.data.updated_at is string
+        && request.resource.data.schema_version == 1;
+    }
+
     match /users/{uid}/folders/{folderId} {
       allow read, delete: if isOwner(uid);
       allow create, update: if isOwner(uid) && validFolder();
@@ -292,6 +306,21 @@ service cloud.firestore {
       allow read, delete: if isOwner(uid);
       allow create: if isOwner(uid) && validImportedSnapshotReceipt();
       allow update: if false;
+    }
+
+    match /users/{uid}/stats/{docId} {
+      allow read: if isOwner(uid) && docId == 'practice';
+      allow create: if isOwner(uid)
+        && docId == 'practice'
+        && validPracticeStats()
+        && request.resource.data.quest_completed_count == 1;
+      allow update: if isOwner(uid)
+        && docId == 'practice'
+        && validPracticeStats()
+        && request.resource.data.quest_completed_count
+          == resource.data.quest_completed_count + 1
+        && request.resource.data.schema_version == resource.data.schema_version;
+      allow delete: if false;
     }
 
     match /roles/{uid} {

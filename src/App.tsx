@@ -18,6 +18,8 @@ import {
   listFolders,
   listPublishedSnapshots,
   purgeLegacyGeneralFolder,
+  getPracticeStats,
+  recordQuestCompletion,
   reconcileCardFolderIds,
   renameFolder,
   revokeSharedSnapshot,
@@ -26,6 +28,7 @@ import {
 import { isDataStoreConfigured, useMockDb } from "./lib/dataMode";
 import { useAuth } from "./hooks/useAuth";
 import type { Card, Draft, Folder } from "./types/card";
+import { emptyPracticeStats } from "./types/practiceStats";
 import { type ImportWordRow } from "./utils/importWords";
 import {
   countSessionPool,
@@ -81,6 +84,7 @@ function App() {
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [practiceStats, setPracticeStats] = useState(emptyPracticeStats());
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     try {
       const stored =
@@ -161,6 +165,7 @@ function App() {
     if (!uid) {
       setCards([]);
       setFolders([]);
+      setPracticeStats(emptyPracticeStats());
       setIsLoading(false);
       return;
     }
@@ -189,10 +194,17 @@ function App() {
             : card,
         );
         cardsData = await reconcileCardFolderIds(uid, cardsData, foldersData);
+        let stats = emptyPracticeStats();
+        try {
+          stats = await getPracticeStats(uid);
+        } catch (error) {
+          console.error("[InkLex] practice stats load failed", error);
+        }
 
         if (cancelled) return;
         setCards(cardsData);
         setFolders(foldersData);
+        setPracticeStats(stats);
         setLoadError(null);
       } catch (error) {
         if (cancelled) return;
@@ -202,6 +214,7 @@ function App() {
         );
         setCards([]);
         setFolders([]);
+        setPracticeStats(emptyPracticeStats());
       } finally {
         if (!cancelled) setIsLoading(false);
       }
@@ -902,9 +915,21 @@ function App() {
     }
   }
 
+  async function handleQuestComplete() {
+    if (!uid) {
+      return;
+    }
+    try {
+      setPracticeStats(await recordQuestCompletion(uid));
+    } catch (error) {
+      console.error("[InkLex] quest stats update failed", error);
+    }
+  }
+
   async function handleSignOut() {
     setCards([]);
     setFolders([]);
+    setPracticeStats(emptyPracticeStats());
     setIsMobileNavOpen(false);
     const sessionKeys: string[] = [];
     for (let index = 0; index < sessionStorage.length; index += 1) {
@@ -994,6 +1019,8 @@ function App() {
         onStartLearning={startLearning}
         onExitLearning={exitLearning}
         onSelectFolderForLearning={selectFolderForLearning}
+        questCompletedCount={practiceStats.questCompletedCount}
+        onQuestComplete={() => void handleQuestComplete()}
       />
 
       {isEditorOpen && (

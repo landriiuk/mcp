@@ -67,6 +67,8 @@ interface WordboxProps {
   onStartLearning: () => void;
   onExitLearning: () => void;
   onSelectFolderForLearning: (folderId: string) => void;
+  questCompletedCount?: number;
+  onQuestComplete?: () => void;
 }
 
 function startLearningLabel(dueCount: number, sessionSize: number, poolSize: number) {
@@ -117,6 +119,8 @@ export function Wordbox({
   onStartLearning,
   onExitLearning,
   onSelectFolderForLearning,
+  questCompletedCount = 0,
+  onQuestComplete,
 }: WordboxProps) {
   const [dropTab, setDropTab] = useState<CardFilter | null>(null);
   const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
@@ -400,6 +404,7 @@ export function Wordbox({
               poolSize={poolSize}
               folderWordCount={reviewCards.length}
               preferredMode={preferredMode}
+              questCompletedCount={questCompletedCount}
               onStart={startSession}
             />
           ) : (
@@ -418,6 +423,8 @@ export function Wordbox({
               onReviewGrade={onReviewGrade}
               onExitLearning={onExitLearning}
               hasAheadOfSchedule={hasAheadOfSchedule}
+              questCompletedCount={questCompletedCount}
+              onSessionComplete={onQuestComplete}
               onEndEarlyControlsChange={
                 activeSessionMode === "review" ? setSessionEndEarly : undefined
               }

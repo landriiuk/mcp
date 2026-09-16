@@ -678,6 +678,14 @@ body.isCardDragging .wordboxCardDrag {
   max-width: 52ch;
 }
 
+.learningHubStats,
+.sessionStatsNote {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .learningHubModes {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

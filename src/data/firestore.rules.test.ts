@@ -13,6 +13,7 @@ import {
   getDoc,
   getDocs,
   setDoc,
+  increment,
   Timestamp,
   updateDoc,
   writeBatch,
@@ -114,6 +115,34 @@ describe("user-owned Firestore data", () => {
       setDoc(doc(db, "users/alice/folders/folder-2"), {
         name: "",
         updated_at: "2026-09-14T00:00:00.000Z",
+      }),
+    );
+  });
+
+  it("lets the owner increment quest completion stats", async () => {
+    const stats = {
+      quest_completed_count: 1,
+      last_quest_completed_at: "2026-09-16T00:00:00.000Z",
+      updated_at: "2026-09-16T00:00:00.000Z",
+      schema_version: 1,
+    };
+    const db = testEnv.authenticatedContext("alice").firestore();
+    const ref = doc(db, "users/alice/stats/practice");
+    await assertSucceeds(setDoc(ref, stats));
+    await assertSucceeds(
+      updateDoc(ref, {
+        quest_completed_count: increment(1),
+        last_quest_completed_at: "2026-09-16T01:00:00.000Z",
+        updated_at: "2026-09-16T01:00:00.000Z",
+      }),
+    );
+
+    const otherDb = testEnv.authenticatedContext("bob").firestore();
+    await assertFails(getDoc(doc(otherDb, "users/alice/stats/practice")));
+    await assertFails(
+      setDoc(doc(db, "users/alice/stats/practice"), {
+        ...stats,
+        quest_completed_count: 9,
       }),
     );
   });

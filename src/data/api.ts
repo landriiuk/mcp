@@ -145,6 +145,20 @@ export async function ensureUserAccess(
   return (await firestore()).ensureUserAccess(uid, email, displayName);
 }
 
+export async function recordQuestCompletion(uid: string) {
+  if (useMockDb()) {
+    return mockApi.recordQuestCompletion(uid);
+  }
+  return (await firestore()).recordQuestCompletion(uid);
+}
+
+export async function getPracticeStats(uid: string) {
+  if (useMockDb()) {
+    return mockApi.getPracticeStats(uid);
+  }
+  return (await firestore()).getPracticeStats(uid);
+}
+
 export async function getUserProfile(uid: string) {
   if (useMockDb()) return mockApi.getUserProfile(uid);
   return (await firestore()).getUserProfile(uid);
