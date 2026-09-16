@@ -4,7 +4,8 @@
 
 - `student` — the default for every new account. The app never shows this label.
 - `teacher` — can invite students and create student-only folder links.
-- `admin` — can assign roles and use teacher tools.
+- `admin` — can assign roles, use teacher tools, and open the
+  internal knowledge base from the sidebar email menu (`/knowledge`).
 
 Users cannot choose a role. To become a teacher they email support at
 `andriukluba@gmail.com`; an admin then assigns `teacher` manually.

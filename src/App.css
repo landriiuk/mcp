@@ -14,10 +14,17 @@
 }
 
 .sidebar {
-  min-height: 100svh;
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100svh;
+  max-height: 100svh;
+  display: flex;
+  flex-direction: column;
   padding: 24px 20px;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--line);
+  overflow: hidden;
   transition: padding 180ms ease;
 }
 
@@ -27,6 +34,7 @@
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 32px;
+  flex-shrink: 0;
 }
 
 .brand {
@@ -164,6 +172,7 @@
 
 .sidebar.isCollapsed {
   padding: 20px 12px;
+  overflow: visible;
 }
 
 .sidebar.isCollapsed .sidebarHeader {
@@ -225,15 +234,25 @@
 
 .folderPanel {
   display: grid;
+  align-content: start;
   gap: 10px;
   min-width: 0;
+  min-height: 0;
   width: 100%;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+.sidebarFooter {
+  margin-top: auto;
+  flex-shrink: 0;
+  padding-top: 12px;
+  background: var(--sidebar-bg);
 }
 
 .sidebarManagementLinks {
   display: grid;
   gap: 4px;
-  margin-top: 18px;
 }
 
 .sidebarManagementLinks a,
@@ -264,12 +283,16 @@
 }
 
 .sidebarAccount {
+  position: relative;
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 10px;
-  margin-top: 18px;
+  margin-top: 8px;
   padding-top: 14px;
   border-top: 1px solid var(--line);
+  flex-shrink: 0;
+  z-index: 6;
 }
 
 .sidebarAccountAvatar {
@@ -297,7 +320,8 @@
 }
 
 .sidebarAccountText strong,
-.sidebarAccountText span {
+.sidebarAccountText span,
+.sidebarAccountEmail {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -307,9 +331,70 @@
   font-size: 13px;
 }
 
-.sidebarAccountText span {
+.sidebarAccountText span,
+.sidebarAccountEmail {
   color: var(--muted);
   font-size: 11px;
+}
+
+.sidebarAccountEmail {
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebarAccountEmail:hover,
+.sidebarAccountEmail:focus-visible {
+  color: var(--ink);
+}
+
+.sidebarAccountMenu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  display: none;
+  min-width: 168px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--white);
+  box-shadow: var(--shadow);
+  z-index: 6;
+}
+
+.sidebarAccountMenu::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: -10px;
+  height: 10px;
+}
+
+.sidebarAccountMenu a,
+.sidebarAccountMenu button {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.sidebarAccountMenu a:hover,
+.sidebarAccountMenu button:hover {
+  background: var(--ghost-bg);
 }
 
 .sidebarLogout {
@@ -338,6 +423,11 @@
   stroke-linejoin: round;
 }
 
+.sidebarAccount:hover .sidebarAccountMenu,
+.sidebarAccount:focus-within .sidebarAccountMenu {
+  display: grid;
+}
+
 .sidebar.isCollapsed .sidebarAccount {
   justify-content: center;
 }
@@ -346,6 +436,24 @@
 .sidebar.isCollapsed .sidebarLogout,
 .sidebar.isCollapsed .sidebarManagementLinks {
   display: none;
+}
+
+.sidebar.isCollapsed .sidebarFooter {
+  padding-top: 8px;
+}
+
+.sidebar.isCollapsed .sidebarAccountMenu {
+  left: calc(100% + 10px);
+  bottom: 0;
+}
+
+.sidebar.isCollapsed .sidebarAccountMenu::after {
+  left: auto;
+  right: 100%;
+  bottom: 8px;
+  width: 10px;
+  height: auto;
+  top: 8px;
 }
 
 .authShell {
@@ -1713,6 +1821,7 @@ select:focus-visible {
     width: 100%;
     max-width: none;
     min-height: auto;
+    height: auto;
     max-height: min(72svh, 560px);
     padding: 18px 16px 20px;
     border-right: 0;
@@ -1720,7 +1829,7 @@ select:focus-visible {
     border-radius: 0 0 20px 20px;
     transform: translateY(-105%);
     transition: transform 200ms ease;
-    overflow-y: auto;
+    overflow: hidden;
     background: var(--sidebar-bg);
     box-shadow: 0 10px 28px rgba(20, 32, 28, 0.14);
   }
@@ -1746,6 +1855,15 @@ select:focus-visible {
   .sidebar.isCollapsed .sidebarAccountText,
   .sidebar.isCollapsed .sidebarLogout {
     display: grid;
+  }
+
+  .sidebar.isCollapsed .sidebarManagementLinks {
+    display: grid;
+  }
+
+  .sidebar.isCollapsed .sidebarAccountMenu {
+    left: 0;
+    bottom: calc(100% + 8px);
   }
 
   .sidebar.isCollapsed .folderInitial {
