@@ -2,6 +2,7 @@ import type { RefObject } from "react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Input } from "../ui/Input";
+import { KNOWLEDGE_BASE_PATH } from "../../data/knowledgeBase";
 import type { Folder } from "../../types/card";
 import type { UserRole } from "../../types/access";
 import { isCardDrag, readDraggedCardId } from "../../utils/cardDrag";
@@ -320,42 +321,63 @@ export function FolderSidebar({
         </div>
       </div>
 
-      <nav className="sidebarManagementLinks" aria-label="Account">
-        {role === "teacher" || role === "admin" ? (
-          <Link to="/teacher" onClick={onCloseMobile}>
-            Students
-          </Link>
-        ) : null}
-        {role === "admin" ? (
-          <Link to="/admin" onClick={onCloseMobile}>
-            Admin
-          </Link>
-        ) : null}
-        <button
-          className="sidebarSupportButton"
-          onClick={() => {
-            onCloseMobile?.();
-            onOpenSupport();
-          }}
-          type="button"
-        >
-          Support
-        </button>
-      </nav>
+      <div className="sidebarFooter">
+        <nav className="sidebarManagementLinks" aria-label="Account">
+          {role === "teacher" || role === "admin" ? (
+            <Link to="/teacher" onClick={onCloseMobile}>
+              Students
+            </Link>
+          ) : null}
+          {role === "admin" ? (
+            <Link to="/admin" onClick={onCloseMobile}>
+              Admin
+            </Link>
+          ) : null}
+          <button
+            className="sidebarSupportButton"
+            onClick={() => {
+              onCloseMobile?.();
+              onOpenSupport();
+            }}
+            type="button"
+          >
+            Support
+          </button>
+        </nav>
 
-      <div className="sidebarAccount">
-        {accountPhotoUrl ? (
-          <img className="sidebarAccountAvatar" src={accountPhotoUrl} alt="" />
-        ) : (
-          <span className="sidebarAccountAvatar isFallback" aria-hidden="true">
-            {accountName.trim().charAt(0).toUpperCase() || "U"}
-          </span>
-        )}
-        <div className="sidebarAccountText">
-          <strong>{accountName}</strong>
-          <span>{isMockAccount ? "Local account" : accountEmail}</span>
-        </div>
-        {!isMockAccount ? (
+        <div className="sidebarAccount">
+          {accountPhotoUrl ? (
+            <img className="sidebarAccountAvatar" src={accountPhotoUrl} alt="" />
+          ) : (
+            <span className="sidebarAccountAvatar isFallback" aria-hidden="true">
+              {accountName.trim().charAt(0).toUpperCase() || "U"}
+            </span>
+          )}
+          <div className="sidebarAccountText">
+            <strong>{accountName}</strong>
+            <button
+              className="sidebarAccountEmail"
+              type="button"
+              aria-haspopup="menu"
+              aria-label={isMockAccount ? "Local account menu" : "Account menu"}
+            >
+              {isMockAccount ? "Local account" : accountEmail}
+            </button>
+          </div>
+          <div className="sidebarAccountMenu" role="menu">
+            {role === "admin" ? (
+              <Link
+                role="menuitem"
+                to={KNOWLEDGE_BASE_PATH}
+                onClick={onCloseMobile}
+              >
+                Knowledge base
+              </Link>
+            ) : null}
+            <button role="menuitem" onClick={onSignOut} type="button">
+              Log out
+            </button>
+          </div>
           <button
             className="sidebarLogout"
             onClick={onSignOut}
@@ -367,7 +389,7 @@ export function FolderSidebar({
               <path d="M10 5H5v14h5M14 8l4 4-4 4M18 12H9" />
             </svg>
           </button>
-        ) : null}
+        </div>
       </div>
     </aside>
   );

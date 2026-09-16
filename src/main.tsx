@@ -10,6 +10,7 @@ import { SharePreviewPage } from './components/share/SharePreviewPage'
 import { InviteAcceptPage } from './components/teacher/InviteAcceptPage'
 import { TeacherDashboard } from './components/teacher/TeacherDashboard'
 import { AdminRolesPage } from './components/admin/AdminRolesPage'
+import { KnowledgeBasePage } from './components/admin/KnowledgeBasePage'
 import { RequireRole } from './components/auth/RequireRole'
 
 /** One-shot wipe: open /?clearDb=1 to clear mock DB + InkLex browser storage. */
@@ -73,6 +74,26 @@ if (!wipeLocalInklexDataIfRequested()) {
                 <RequireAuth>
                   <RequireRole allowed={['admin']}>
                     <AdminRolesPage />
+                  </RequireRole>
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/knowledge"
+              element={
+                <RequireAuth>
+                  <RequireRole allowed={['admin']}>
+                    <KnowledgeBasePage />
+                  </RequireRole>
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/knowledge/:slug"
+              element={
+                <RequireAuth>
+                  <RequireRole allowed={['admin']}>
+                    <KnowledgeBasePage />
                   </RequireRole>
                 </RequireAuth>
               }
