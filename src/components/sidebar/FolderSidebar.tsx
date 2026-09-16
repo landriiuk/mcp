@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Input } from "../ui/Input";
 import type { Folder } from "../../types/card";
+import type { UserRole } from "../../types/access";
 import { isCardDrag, readDraggedCardId } from "../../utils/cardDrag";
 
 type FolderCounts = {
@@ -38,7 +39,9 @@ type FolderSidebarProps = {
   accountEmail: string | null;
   accountPhotoUrl: string | null;
   isMockAccount: boolean;
+  role: UserRole;
   onSignOut: () => void;
+  onOpenSupport: () => void;
 };
 
 function folderDropHandlers(
@@ -113,7 +116,9 @@ export function FolderSidebar({
   accountEmail,
   accountPhotoUrl,
   isMockAccount,
+  role,
   onSignOut,
+  onOpenSupport,
 }: FolderSidebarProps) {
   const [dropTarget, setDropTarget] = useState<string | null>(null);
 
@@ -315,6 +320,29 @@ export function FolderSidebar({
         </div>
       </div>
 
+      <nav className="sidebarManagementLinks" aria-label="Account">
+        {role === "teacher" || role === "admin" ? (
+          <Link to="/teacher" onClick={onCloseMobile}>
+            Students
+          </Link>
+        ) : null}
+        {role === "admin" ? (
+          <Link to="/admin" onClick={onCloseMobile}>
+            Admin
+          </Link>
+        ) : null}
+        <button
+          className="sidebarSupportButton"
+          onClick={() => {
+            onCloseMobile?.();
+            onOpenSupport();
+          }}
+          type="button"
+        >
+          Support
+        </button>
+      </nav>
+
       <div className="sidebarAccount">
         {accountPhotoUrl ? (
           <img className="sidebarAccountAvatar" src={accountPhotoUrl} alt="" />
@@ -325,7 +353,7 @@ export function FolderSidebar({
         )}
         <div className="sidebarAccountText">
           <strong>{accountName}</strong>
-          <span>{isMockAccount ? "Mock DB" : accountEmail}</span>
+          <span>{isMockAccount ? "Local account" : accountEmail}</span>
         </div>
         {!isMockAccount ? (
           <button

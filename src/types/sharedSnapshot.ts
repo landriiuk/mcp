@@ -1,4 +1,5 @@
 export type SharedSnapshotStatus = "publishing" | "active" | "revoked";
+export type SharedSnapshotVisibility = "public" | "students";
 
 export type SharedSnapshotMeta = {
   id: string;
@@ -6,6 +7,7 @@ export type SharedSnapshotMeta = {
   wordCount: number;
   publishedAt: string;
   status: SharedSnapshotStatus;
+  visibility: SharedSnapshotVisibility;
 };
 
 export type SharedSnapshotWord = {
@@ -29,6 +31,7 @@ export type PublishSnapshotResult = {
   shareId: string;
   folderName: string;
   wordCount: number;
+  visibility: SharedSnapshotVisibility;
 };
 
 export type CopySnapshotResult = {

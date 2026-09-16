@@ -5,6 +5,31 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == uid;
     }
 
+    function authEmailLower() {
+      return request.auth != null && request.auth.token.email != null
+        ? request.auth.token.email.lower()
+        : '';
+    }
+
+    function hasRole(uid, role) {
+      return exists(/databases/$(database)/documents/roles/$(uid))
+        && get(/databases/$(database)/documents/roles/$(uid)).data.role == role;
+    }
+
+    function isAdmin() {
+      return request.auth != null && hasRole(request.auth.uid, 'admin');
+    }
+
+    function isTeacher() {
+      return request.auth != null
+        && (hasRole(request.auth.uid, 'teacher') || isAdmin());
+    }
+
+    function isStudentOfTeacher(teacherUid) {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/teachers/$(teacherUid)/students/$(request.auth.uid));
+    }
+
     function validFolder() {
       return request.resource.data.keys().hasOnly(['name', 'updated_at'])
         && request.resource.data.name is string
@@ -51,8 +76,17 @@ service cloud.firestore {
         'word_count',
         'published_at',
         'schema_version',
-        'status'
+        'status',
+        'visibility'
       ])
+        && request.resource.data.keys().hasAll([
+          'owner_uid',
+          'folder_name',
+          'word_count',
+          'published_at',
+          'schema_version',
+          'status'
+        ])
         && request.resource.data.owner_uid is string
         && request.resource.data.owner_uid == request.auth.uid
         && request.resource.data.folder_name is string
@@ -63,7 +97,11 @@ service cloud.firestore {
         && request.resource.data.word_count <= 400
         && request.resource.data.published_at is string
         && request.resource.data.schema_version == 1
-        && request.resource.data.status in ['publishing', 'active', 'revoked'];
+        && request.resource.data.status in ['publishing', 'active', 'revoked']
+        && (
+          !request.resource.data.keys().hasAny(['visibility'])
+          || request.resource.data.visibility in ['public', 'students']
+        );
     }
 
     function validSnapshotWord() {
@@ -92,7 +130,25 @@ service cloud.firestore {
     }
 
     function isActiveSnapshot(shareId) {
-      return snapshotData(shareId).status == 'active';
+      return canReadSnapshot(snapshotData(shareId));
+    }
+
+    function snapshotVisibility(data) {
+      return data.keys().hasAny(['visibility']) ? data.visibility : 'public';
+    }
+
+    function canReadSnapshot(data) {
+      return data.status == 'active'
+        && (
+          snapshotVisibility(data) == 'public'
+          || (
+            snapshotVisibility(data) == 'students'
+            && (
+              (request.auth != null && data.owner_uid == request.auth.uid)
+              || isStudentOfTeacher(data.owner_uid)
+            )
+          )
+        );
     }
 
     function validPublishedSnapshotIndex() {
@@ -101,8 +157,16 @@ service cloud.firestore {
         'folder_name',
         'word_count',
         'published_at',
-        'status'
+        'status',
+        'visibility'
       ])
+        && request.resource.data.keys().hasAll([
+          'source_folder_id',
+          'folder_name',
+          'word_count',
+          'published_at',
+          'status'
+        ])
         && request.resource.data.source_folder_id is string
         && request.resource.data.source_folder_id.size() > 0
         && request.resource.data.folder_name is string
@@ -112,7 +176,11 @@ service cloud.firestore {
         && request.resource.data.word_count > 0
         && request.resource.data.word_count <= 400
         && request.resource.data.published_at is string
-        && request.resource.data.status in ['publishing', 'active', 'revoked'];
+        && request.resource.data.status in ['publishing', 'active', 'revoked']
+        && (
+          !request.resource.data.keys().hasAny(['visibility'])
+          || request.resource.data.visibility in ['public', 'students']
+        );
     }
 
     function validImportedSnapshotReceipt() {
@@ -127,6 +195,82 @@ service cloud.firestore {
         && request.resource.data.folder_name.size() > 0
         && request.resource.data.folder_name.size() <= 50
         && request.resource.data.imported_at is string;
+    }
+
+    function validRole() {
+      return request.resource.data.keys().hasOnly([
+        'role',
+        'assigned_at',
+        'assigned_by_uid',
+        'schema_version'
+      ])
+        && request.resource.data.role in ['student', 'teacher', 'admin']
+        && request.resource.data.assigned_at is string
+        && (request.resource.data.assigned_by_uid == null
+          || request.resource.data.assigned_by_uid is string)
+        && request.resource.data.schema_version == 1;
+    }
+
+    function validUserProfile() {
+      return request.resource.data.keys().hasOnly([
+        'email_lower',
+        'display_name',
+        'created_at',
+        'updated_at',
+        'schema_version'
+      ])
+        && request.resource.data.email_lower is string
+        && request.resource.data.email_lower == authEmailLower()
+        && (request.resource.data.display_name == null
+          || request.resource.data.display_name is string)
+        && request.resource.data.created_at is string
+        && request.resource.data.updated_at is string
+        && request.resource.data.schema_version == 1;
+    }
+
+    function validTeacherInvite() {
+      return request.resource.data.keys().hasOnly([
+        'teacher_uid',
+        'teacher_name',
+        'student_email_lower',
+        'status',
+        'created_at',
+        'expires_at',
+        'accepted_by_uid',
+        'accepted_at',
+        'schema_version'
+      ])
+        && request.resource.data.teacher_uid is string
+        && request.resource.data.teacher_name is string
+        && request.resource.data.teacher_name.size() > 0
+        && request.resource.data.student_email_lower is string
+        && request.resource.data.student_email_lower
+          == request.resource.data.student_email_lower.lower()
+        && request.resource.data.student_email_lower.matches('^[^@]+@[^@]+[.][^@]+$')
+        && request.resource.data.status in ['pending', 'accepted', 'revoked']
+        && request.resource.data.created_at is string
+        && request.resource.data.expires_at is timestamp
+        && (request.resource.data.accepted_by_uid == null
+          || request.resource.data.accepted_by_uid is string)
+        && (request.resource.data.accepted_at == null
+          || request.resource.data.accepted_at is string)
+        && request.resource.data.schema_version == 1;
+    }
+
+    function validTeacherStudent() {
+      return request.resource.data.keys().hasOnly([
+        'invite_id',
+        'student_email_lower',
+        'display_name',
+        'accepted_at',
+        'schema_version'
+      ])
+        && request.resource.data.invite_id is string
+        && request.resource.data.student_email_lower == authEmailLower()
+        && (request.resource.data.display_name == null
+          || request.resource.data.display_name is string)
+        && request.resource.data.accepted_at is string
+        && request.resource.data.schema_version == 1;
     }
 
     match /users/{uid}/folders/{folderId} {
@@ -150,13 +294,109 @@ service cloud.firestore {
       allow update: if false;
     }
 
+    match /roles/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid)
+        && validRole()
+        && request.resource.data.role == 'student'
+        && request.resource.data.assigned_by_uid == null;
+      allow update: if isAdmin()
+        && uid != request.auth.uid
+        && validRole()
+        && request.resource.data.assigned_by_uid == request.auth.uid;
+      allow delete: if false;
+    }
+
+    match /userProfiles/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid) && validUserProfile();
+      allow update: if isOwner(uid)
+        && validUserProfile()
+        && request.resource.data.created_at == resource.data.created_at;
+      allow delete: if false;
+    }
+
+    match /teacherInvites/{inviteId} {
+      allow read: if request.auth != null
+        && (
+          resource.data.teacher_uid == request.auth.uid
+          || resource.data.student_email_lower == authEmailLower()
+          || isAdmin()
+        );
+      allow create: if isTeacher()
+        && validTeacherInvite()
+        && request.resource.data.teacher_uid == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.accepted_by_uid == null
+        && request.resource.data.accepted_at == null
+        && request.resource.data.expires_at > request.time;
+      allow update: if validTeacherInvite()
+        && request.resource.data.teacher_uid == resource.data.teacher_uid
+        && request.resource.data.teacher_name == resource.data.teacher_name
+        && request.resource.data.student_email_lower == resource.data.student_email_lower
+        && request.resource.data.created_at == resource.data.created_at
+        && request.resource.data.expires_at == resource.data.expires_at
+        && request.resource.data.schema_version == resource.data.schema_version
+        && (
+          (
+            request.auth != null
+            && resource.data.status == 'pending'
+            && resource.data.expires_at > request.time
+            && resource.data.student_email_lower == authEmailLower()
+            && request.resource.data.status == 'accepted'
+            && request.resource.data.accepted_by_uid == request.auth.uid
+            && request.resource.data.accepted_at is string
+            && getAfter(/databases/$(database)/documents/teachers/$(resource.data.teacher_uid)/students/$(request.auth.uid)).data.invite_id == inviteId
+          )
+          || (
+            request.auth != null
+            && resource.data.teacher_uid == request.auth.uid
+            && resource.data.status == 'pending'
+            && request.resource.data.status == 'revoked'
+            && request.resource.data.accepted_by_uid == null
+            && request.resource.data.accepted_at == null
+          )
+        );
+      allow delete: if false;
+    }
+
+    match /teachers/{teacherUid}/students/{studentUid} {
+      allow read: if request.auth != null
+        && (
+          request.auth.uid == teacherUid
+          || request.auth.uid == studentUid
+          || isAdmin()
+        );
+      allow create: if isOwner(studentUid)
+        && validTeacherStudent()
+        && (
+          hasRole(teacherUid, 'teacher')
+          || hasRole(teacherUid, 'admin')
+        )
+        && getAfter(/databases/$(database)/documents/teacherInvites/$(request.resource.data.invite_id)).data.status == 'accepted'
+        && getAfter(/databases/$(database)/documents/teacherInvites/$(request.resource.data.invite_id)).data.accepted_by_uid == request.auth.uid
+        && getAfter(/databases/$(database)/documents/teacherInvites/$(request.resource.data.invite_id)).data.teacher_uid == teacherUid;
+      allow update: if false;
+      allow delete: if request.auth != null
+        && (
+          request.auth.uid == teacherUid
+          || request.auth.uid == studentUid
+          || isAdmin()
+        );
+    }
+
     match /sharedSnapshots/{shareId} {
-      allow get: if resource.data.status == 'active'
+      allow get: if canReadSnapshot(resource.data)
         || (request.auth != null && resource.data.owner_uid == request.auth.uid);
       allow list: if false;
       allow create: if request.auth != null
         && validSnapshotMeta()
-        && request.resource.data.status == 'publishing';
+        && request.resource.data.status == 'publishing'
+        && request.resource.data.keys().hasAny(['visibility'])
+        && (
+          request.resource.data.visibility == 'public'
+          || isTeacher()
+        );
       allow update: if request.auth != null
         && resource.data.owner_uid == request.auth.uid
         && validSnapshotMeta()
@@ -165,6 +405,17 @@ service cloud.firestore {
         && request.resource.data.word_count == resource.data.word_count
         && request.resource.data.published_at == resource.data.published_at
         && request.resource.data.schema_version == resource.data.schema_version
+        && (
+          (
+            !resource.data.keys().hasAny(['visibility'])
+            && !request.resource.data.keys().hasAny(['visibility'])
+          )
+          || (
+            resource.data.keys().hasAny(['visibility'])
+            && request.resource.data.keys().hasAny(['visibility'])
+            && request.resource.data.visibility == resource.data.visibility
+          )
+        )
         && (
           (resource.data.status == 'publishing'
             && request.resource.data.status in ['active', 'revoked'])

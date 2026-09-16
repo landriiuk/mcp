@@ -4,17 +4,22 @@ import { authErrorMessage } from "./authErrors";
 import {
   requireShareId,
   requireUid,
+  rolePath,
   sharedSnapshotPath,
   sharedSnapshotWordPath,
   sharedSnapshotWordsPath,
   userFolderPath,
   userFoldersPath,
   userImportedSnapshotPath,
+  userProfilePath,
   userPublishedSnapshotPath,
+  teacherInvitePath,
+  teacherStudentPath,
   userWordPath,
   userWordsPath,
 } from "./userDataPath";
 import { nextAvailableFolderName } from "./sharedSnapshots";
+import { SUPPORT_EMAIL } from "./support";
 import { sharePath } from "../utils/routes";
 
 describe("authErrorMessage", () => {
@@ -63,10 +68,25 @@ describe("user-scoped Firestore paths", () => {
     expect(() => requireShareId("a/b")).toThrow("valid share id");
   });
 
+  it("builds role, profile, invitation, and membership paths", () => {
+    expect(rolePath("alice")).toBe("roles/alice");
+    expect(userProfilePath("alice")).toBe("userProfiles/alice");
+    expect(teacherInvitePath("invite-1")).toBe(
+      "teacherInvites/invite-1",
+    );
+    expect(teacherStudentPath("teacher", "student")).toBe(
+      "teachers/teacher/students/student",
+    );
+  });
+
   it("creates safe unique names and share URLs", () => {
     expect(nextAvailableFolderName("Travel", ["Travel", "Travel (2)"])).toBe(
       "Travel (3)",
     );
     expect(sharePath("share id")).toBe("/share/share%20id");
+  });
+
+  it("exposes the support email", () => {
+    expect(SUPPORT_EMAIL).toBe("andriukluba@gmail.com");
   });
 });

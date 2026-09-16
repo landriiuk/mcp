@@ -6,9 +6,9 @@ InkLex users can publish a read-only snapshot of one folder and send its URL:
 https://inklex.vercel.app/share/{shareId}
 ```
 
-The recipient can preview the vocabulary without signing in. Adding the set to
-InkLex requires authentication and creates an independent folder owned by the
-recipient.
+Public links can be previewed without signing in. Teachers can instead select
+**My students only**; those links require an authenticated student relationship.
+Adding either set creates an independent folder owned by the recipient.
 
 ## Snapshot behavior
 
@@ -35,13 +35,14 @@ sharedSnapshots/{shareId}/words/{snapshotWordId}
 users/{ownerUid}/publishedSnapshots/{shareId}
 ```
 
-Publishing uses `publishing → active`; anonymous reads are allowed only in
-`active`. Revocation changes the state to `revoked`, immediately blocking the
-public document and its words. Private user collections remain owner-only.
+Publishing uses `publishing → active`. Active `public` snapshots allow anonymous
+reads; active `students` snapshots require membership under
+`teachers/{ownerUid}/students/{studentUid}`. Revocation immediately blocks the
+document and its words. Private user collections remain owner-only.
 
-The share ID is an unguessable UUID, but the link is still a bearer link:
-anyone who receives it can read and copy its vocabulary until it is revoked.
-Do not include private information in shared cards.
+The share ID is an unguessable UUID. Public links are bearer links: anyone who
+receives one can read and copy its vocabulary until it is revoked. Do not
+include private information in publicly shared cards.
 
 ## Development and deployment
 

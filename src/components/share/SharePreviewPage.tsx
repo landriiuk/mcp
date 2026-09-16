@@ -17,13 +17,14 @@ export function SharePreviewPage() {
   const autoImportStarted = useRef(false);
 
   useEffect(() => {
+    if (authLoading) return;
     let cancelled = false;
     autoImportStarted.current = false;
     setLoading(true);
     setSnapshot(null);
     setCopying(false);
     setError(null);
-    getPublicSnapshot(shareId)
+    getPublicSnapshot(shareId, user?.uid)
       .then((result) => {
         if (!cancelled) setSnapshot(result);
       })
@@ -39,7 +40,7 @@ export function SharePreviewPage() {
     return () => {
       cancelled = true;
     };
-  }, [shareId]);
+  }, [authLoading, shareId, user?.uid]);
 
   async function addToInkLex() {
     if (!user) {
@@ -107,11 +108,31 @@ export function SharePreviewPage() {
         {!loading && !snapshot ? (
           <div className="sharePreviewMessage">
             <p className="eyebrow">Shared folder</p>
-            <h1>Link unavailable</h1>
-            <p>{error}</p>
-            <Link className="primary sharePreviewHome" to="/">
-              Go to InkLex
-            </Link>
+            <h1>{user ? "Link unavailable" : "Sign in to check access"}</h1>
+            <p>
+              {user
+                ? error
+                : "This may be a private folder shared with a teacher's students."}
+            </p>
+            {user ? (
+              <Link className="primary sharePreviewHome" to="/">
+                Go to InkLex
+              </Link>
+            ) : (
+              <button
+                className="primary"
+                onClick={() =>
+                  navigate("/login", {
+                    state: {
+                      from: `${location.pathname}${location.search}`,
+                    },
+                  })
+                }
+                type="button"
+              >
+                Sign in
+              </button>
+            )}
           </div>
         ) : null}
 

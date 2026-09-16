@@ -230,6 +230,39 @@
   width: 100%;
 }
 
+.sidebarManagementLinks {
+  display: grid;
+  gap: 4px;
+  margin-top: 18px;
+}
+
+.sidebarManagementLinks a,
+.sidebarSupportButton {
+  min-height: 34px;
+  padding: 0 9px;
+  border-radius: var(--radius);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.sidebarSupportButton {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.sidebarManagementLinks a:hover,
+.sidebarSupportButton:hover {
+  color: var(--ink);
+  background: var(--ghost-bg);
+}
+
 .sidebarAccount {
   display: flex;
   align-items: center;
@@ -310,7 +343,8 @@
 }
 
 .sidebar.isCollapsed .sidebarAccountText,
-.sidebar.isCollapsed .sidebarLogout {
+.sidebar.isCollapsed .sidebarLogout,
+.sidebar.isCollapsed .sidebarManagementLinks {
   display: none;
 }
 
@@ -808,6 +842,88 @@ button {
   color: var(--red);
 }
 
+.shareVisibilityOptions {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.shareVisibilityOptions legend {
+  margin-bottom: 8px;
+  color: var(--label-text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.shareVisibilityOptions label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.shareVisibilityOptions input {
+  margin-top: 3px;
+}
+
+.shareVisibilityOptions span {
+  display: grid;
+  gap: 2px;
+}
+
+.shareVisibilityOptions small,
+.shareVisibilityHint {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.shareVisibilityHint {
+  margin: 0;
+  font-size: 13px;
+}
+
+.shareVisibilityHint a {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.supportModal {
+  display: grid;
+  gap: 16px;
+  justify-items: start;
+}
+
+.supportModal h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 28px;
+}
+
+.supportModal:focus {
+  outline: none;
+}
+
+.supportLead {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.supportEmail {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  word-break: break-all;
+}
+
+.supportModal .primary {
+  min-width: 120px;
+}
+
 .sharePreviewShell {
   min-height: 100svh;
   background: var(--app-bg);
@@ -950,6 +1066,181 @@ button {
   display: inline-flex;
   align-items: center;
   text-decoration: none;
+}
+
+.accessPageShell,
+.managementShell {
+  min-height: 100svh;
+  background: var(--app-bg);
+}
+
+.accessPageShell,
+.accessPageMessage {
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.accessCard {
+  width: min(520px, 100%);
+  display: grid;
+  justify-items: start;
+  gap: 18px;
+  padding: 30px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--white);
+  box-shadow: var(--shadow);
+}
+
+.accessCard h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(32px, 6vw, 46px);
+}
+
+.accessCard p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.accessLinkButton {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.accessError {
+  margin: 0;
+  color: var(--red);
+  line-height: 1.45;
+}
+
+.managementTopbar {
+  min-height: 72px;
+  padding: 12px clamp(20px, 5vw, 72px);
+  border-bottom: 1px solid var(--line);
+  background: var(--sidebar-bg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.managementBack {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.managementContent {
+  width: min(900px, calc(100% - 32px));
+  display: grid;
+  gap: 18px;
+  margin: 0 auto;
+  padding: clamp(36px, 7vw, 72px) 0;
+}
+
+.managementHero {
+  margin-bottom: 10px;
+}
+
+.managementHero h1 {
+  margin: 6px 0 8px;
+  font-family: var(--font-display);
+  font-size: clamp(40px, 7vw, 64px);
+  line-height: 1;
+}
+
+.managementHero p:not(.eyebrow) {
+  max-width: 620px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.managementPanel {
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--white);
+}
+
+.managementPanel h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 25px;
+}
+
+.managementInviteForm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.managementList {
+  display: grid;
+  gap: 8px;
+}
+
+.managementRow {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.managementRow > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.managementRow strong,
+.managementRow span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.managementRow span,
+.managementEmpty {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.managementRow select {
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0 10px;
+  background: var(--white);
+}
+
+.managementActions {
+  display: flex;
+  gap: 6px;
+}
+
+.managementActions button,
+.managementRemove {
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: var(--radius);
+  background: var(--ghost-bg);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.managementActions .isDanger,
+.managementRemove.isDanger {
+  color: var(--red);
 }
 
 .quickAdd {
@@ -1559,6 +1850,25 @@ select:focus-visible {
 
   .sharePreviewGrid {
     grid-template-columns: 1fr;
+  }
+
+  .managementInviteForm {
+    grid-template-columns: 1fr;
+  }
+
+  .managementRow {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .managementActions,
+  .managementRow select,
+  .managementRemove {
+    width: 100%;
+  }
+
+  .managementActions button {
+    flex: 1;
   }
 
   .formRow {

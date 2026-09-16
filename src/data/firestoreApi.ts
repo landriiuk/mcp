@@ -5,7 +5,10 @@ import {
   getDoc,
   setDoc,
   deleteDoc,
+  query,
+  where,
   writeBatch,
+  Timestamp,
   type DocumentData,
 } from "firebase/firestore";
 import { getDb } from "../lib/firebase";
@@ -13,9 +16,17 @@ import {
   sharedSnapshotPath,
   sharedSnapshotWordPath,
   sharedSnapshotWordsPath,
+  rolePath,
+  rolesPath,
+  teacherInvitePath,
+  teacherInvitesPath,
+  teacherStudentPath,
+  teacherStudentsPath,
   userFolderPath,
   userFoldersPath,
   userImportedSnapshotPath,
+  userProfilePath,
+  userProfilesPath,
   userPublishedSnapshotPath,
   userPublishedSnapshotsPath,
   userWordPath,
@@ -27,12 +38,19 @@ import {
 } from "../lib/sharedSnapshots";
 import type { Card, CardStatus, Draft, Folder } from "../types/card";
 import type {
+  TeacherInvite,
+  TeacherStudent,
+  UserProfile,
+  UserRole,
+} from "../types/access";
+import type {
   CopySnapshotResult,
   PublishedSnapshot,
   PublishSnapshotResult,
   SharedSnapshot,
   SharedSnapshotMeta,
   SharedSnapshotStatus,
+  SharedSnapshotVisibility,
   SharedSnapshotWord,
 } from "../types/sharedSnapshot";
 import { reviewFieldsForStatus } from "../utils/reviewAlgorithm";
@@ -71,6 +89,22 @@ function publishedSnapshotRef(uid: string, shareId: string) {
 
 function importedSnapshotRef(uid: string, shareId: string) {
   return doc(getDb(), userImportedSnapshotPath(uid, shareId));
+}
+
+function roleRef(uid: string) {
+  return doc(getDb(), rolePath(uid));
+}
+
+function profileRef(uid: string) {
+  return doc(getDb(), userProfilePath(uid));
+}
+
+function inviteRef(inviteId: string) {
+  return doc(getDb(), teacherInvitePath(inviteId));
+}
+
+function studentsRef(teacherUid: string) {
+  return collection(getDb(), teacherStudentsPath(teacherUid));
 }
 
 function nowIso() {
@@ -157,6 +191,292 @@ async function commitInChunks(
   }
 
   await flush();
+}
+
+function normalizeRole(value: unknown): UserRole {
+  return value === "teacher" || value === "admin" ? value : "student";
+}
+
+function normalizeTimestamp(value: unknown): string {
+  if (
+    value &&
+    typeof value === "object" &&
+    "toDate" in value &&
+    typeof value.toDate === "function"
+  ) {
+    return value.toDate().toISOString();
+  }
+  return String(value ?? "");
+}
+
+export async function ensureUserAccess(
+  uid: string,
+  email: string | null,
+  displayName: string | null,
+): Promise<UserProfile> {
+  const [existingRole, existingProfile] = await Promise.all([
+    getDoc(roleRef(uid)),
+    getDoc(profileRef(uid)),
+  ]);
+  const stamp = nowIso();
+  if (!existingRole.exists()) {
+    await setDoc(roleRef(uid), {
+      role: "student",
+      assigned_at: stamp,
+      assigned_by_uid: null,
+      schema_version: 1,
+    });
+  }
+
+  const createdAt = existingProfile.exists()
+    ? String(existingProfile.data().created_at ?? stamp)
+    : stamp;
+  const emailLower = (email ?? "").trim().toLowerCase();
+  await setDoc(profileRef(uid), {
+    email_lower: emailLower,
+    display_name: displayName?.trim() || null,
+    created_at: createdAt,
+    updated_at: stamp,
+    schema_version: 1,
+  });
+
+  return {
+    uid,
+    email: emailLower,
+    displayName: displayName?.trim() || null,
+    role: normalizeRole(existingRole.data()?.role),
+    createdAt,
+    updatedAt: stamp,
+  };
+}
+
+export async function getUserProfile(uid: string): Promise<UserProfile> {
+  const [profileSnapshot, roleSnapshot] = await Promise.all([
+    getDoc(profileRef(uid)),
+    getDoc(roleRef(uid)),
+  ]);
+  if (!profileSnapshot.exists()) {
+    throw new Error("User profile not found.");
+  }
+  const data = profileSnapshot.data();
+  return {
+    uid,
+    email: String(data.email_lower ?? ""),
+    displayName:
+      typeof data.display_name === "string" ? data.display_name : null,
+    role: normalizeRole(roleSnapshot.data()?.role),
+    createdAt: String(data.created_at ?? ""),
+    updatedAt: String(data.updated_at ?? ""),
+  };
+}
+
+export async function listUserProfiles(): Promise<UserProfile[]> {
+  const [profilesSnapshot, rolesSnapshot] = await Promise.all([
+    getDocs(collection(getDb(), userProfilesPath())),
+    getDocs(collection(getDb(), rolesPath())),
+  ]);
+  const roles = new Map(
+    rolesSnapshot.docs.map((entry) => [
+      entry.id,
+      normalizeRole(entry.data().role),
+    ]),
+  );
+  return profilesSnapshot.docs
+    .map((entry) => {
+      const data = entry.data();
+      return {
+        uid: entry.id,
+        email: String(data.email_lower ?? ""),
+        displayName:
+          typeof data.display_name === "string" ? data.display_name : null,
+        role: roles.get(entry.id) ?? "student",
+        createdAt: String(data.created_at ?? ""),
+        updatedAt: String(data.updated_at ?? ""),
+      } satisfies UserProfile;
+    })
+    .sort((a, b) => a.email.localeCompare(b.email));
+}
+
+export async function assignUserRole(
+  adminUid: string,
+  targetUid: string,
+  role: UserRole,
+): Promise<void> {
+  if (adminUid === targetUid) {
+    throw new Error("You cannot change your own admin role.");
+  }
+  await setDoc(roleRef(targetUid), {
+    role,
+    assigned_at: nowIso(),
+    assigned_by_uid: adminUid,
+    schema_version: 1,
+  });
+}
+
+function normalizeInvite(id: string, data: DocumentData): TeacherInvite {
+  const status =
+    data.status === "accepted" || data.status === "revoked"
+      ? data.status
+      : normalizeTimestamp(data.expires_at) &&
+          normalizeTimestamp(data.expires_at) < nowIso()
+        ? "expired"
+        : "pending";
+  return {
+    id,
+    teacherUid: String(data.teacher_uid ?? ""),
+    teacherName: String(data.teacher_name ?? "InkLex teacher"),
+    studentEmail: String(data.student_email_lower ?? ""),
+    status,
+    createdAt: String(data.created_at ?? ""),
+    expiresAt: normalizeTimestamp(data.expires_at),
+    acceptedByUid:
+      typeof data.accepted_by_uid === "string" ? data.accepted_by_uid : null,
+  };
+}
+
+export async function createTeacherInvite(
+  teacherUid: string,
+  teacherName: string,
+  studentEmail: string,
+): Promise<TeacherInvite> {
+  const emailLower = studentEmail.trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(emailLower)) {
+    throw new Error("Enter a valid student email.");
+  }
+  const existing = (await listTeacherInvites(teacherUid)).find(
+    (invite) =>
+      invite.studentEmail === emailLower && invite.status === "pending",
+  );
+  if (existing) {
+    return existing;
+  }
+  const id = createId();
+  const createdAt = nowIso();
+  const expiresAtDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  await setDoc(inviteRef(id), {
+    teacher_uid: teacherUid,
+    teacher_name: teacherName.trim() || "InkLex teacher",
+    student_email_lower: emailLower,
+    status: "pending",
+    created_at: createdAt,
+    expires_at: Timestamp.fromDate(expiresAtDate),
+    accepted_by_uid: null,
+    accepted_at: null,
+    schema_version: 1,
+  });
+  return {
+    id,
+    teacherUid,
+    teacherName: teacherName.trim() || "InkLex teacher",
+    studentEmail: emailLower,
+    status: "pending",
+    createdAt,
+    expiresAt: expiresAtDate.toISOString(),
+    acceptedByUid: null,
+  };
+}
+
+export async function listTeacherInvites(
+  teacherUid: string,
+): Promise<TeacherInvite[]> {
+  const snapshot = await getDocs(
+    query(
+      collection(getDb(), teacherInvitesPath()),
+      where("teacher_uid", "==", teacherUid),
+    ),
+  );
+  return snapshot.docs
+    .map((entry) => normalizeInvite(entry.id, entry.data()))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export async function getTeacherInvite(
+  inviteId: string,
+): Promise<TeacherInvite> {
+  const snapshot = await getDoc(inviteRef(inviteId));
+  if (!snapshot.exists()) {
+    throw new Error("Invitation not found.");
+  }
+  return normalizeInvite(snapshot.id, snapshot.data());
+}
+
+export async function acceptTeacherInvite(
+  inviteId: string,
+  studentUid: string,
+  studentEmail: string,
+  displayName: string | null,
+): Promise<string> {
+  const inviteSnapshot = await getDoc(inviteRef(inviteId));
+  if (!inviteSnapshot.exists()) {
+    throw new Error("Invitation not found.");
+  }
+  const invite = normalizeInvite(inviteSnapshot.id, inviteSnapshot.data());
+  if (invite.status !== "pending") {
+    throw new Error(
+      invite.status === "accepted"
+        ? "This invitation was already accepted."
+        : "This invitation is no longer active.",
+    );
+  }
+  if (invite.studentEmail !== studentEmail.trim().toLowerCase()) {
+    throw new Error(`Sign in as ${invite.studentEmail} to accept this invitation.`);
+  }
+
+  const acceptedAt = nowIso();
+  const batch = writeBatch(getDb());
+  batch.update(inviteRef(inviteId), {
+    status: "accepted",
+    accepted_by_uid: studentUid,
+    accepted_at: acceptedAt,
+  });
+  batch.set(doc(getDb(), teacherStudentPath(invite.teacherUid, studentUid)), {
+    invite_id: inviteId,
+    student_email_lower: invite.studentEmail,
+    display_name: displayName?.trim() || null,
+    accepted_at: acceptedAt,
+    schema_version: 1,
+  });
+  await batch.commit();
+  return invite.teacherUid;
+}
+
+export async function listTeacherStudents(
+  teacherUid: string,
+): Promise<TeacherStudent[]> {
+  const snapshot = await getDocs(studentsRef(teacherUid));
+  return snapshot.docs
+    .map((entry) => {
+      const data = entry.data();
+      return {
+        uid: entry.id,
+        email: String(data.student_email_lower ?? ""),
+        displayName:
+          typeof data.display_name === "string" ? data.display_name : null,
+        acceptedAt: String(data.accepted_at ?? ""),
+      };
+    })
+    .sort((a, b) => a.email.localeCompare(b.email));
+}
+
+export async function removeTeacherStudent(
+  teacherUid: string,
+  studentUid: string,
+): Promise<void> {
+  await deleteDoc(doc(getDb(), teacherStudentPath(teacherUid, studentUid)));
+}
+
+export async function revokeTeacherInvite(
+  teacherUid: string,
+  inviteId: string,
+): Promise<void> {
+  const snapshot = await getDoc(inviteRef(inviteId));
+  if (!snapshot.exists() || snapshot.data().teacher_uid !== teacherUid) {
+    throw new Error("Invitation not found.");
+  }
+  if (snapshot.data().status !== "pending") {
+    return;
+  }
+  await setDoc(inviteRef(inviteId), { status: "revoked" }, { merge: true });
 }
 
 export async function listWords(uid: string): Promise<Card[]> {
@@ -553,6 +873,8 @@ function normalizeSnapshotMeta(
     wordCount: Number(data.word_count) || 0,
     publishedAt: String(data.published_at ?? ""),
     status: String(data.status ?? "revoked") as SharedSnapshotStatus,
+    visibility:
+      data.visibility === "students" ? "students" : "public",
   };
 }
 
@@ -576,7 +898,16 @@ function normalizeSnapshotWord(
 export async function publishFolderSnapshot(
   uid: string,
   folderId: string,
+  visibility: SharedSnapshotVisibility = "public",
 ): Promise<PublishSnapshotResult> {
+  if (visibility === "students") {
+    const roleSnapshot = await getDoc(roleRef(uid));
+    const role = normalizeRole(roleSnapshot.data()?.role);
+    if (role !== "teacher" && role !== "admin") {
+      throw new Error("Only teachers can share with their students.");
+    }
+  }
+
   const [folderSnapshot, cards] = await Promise.all([
     getDoc(folderRef(uid, folderId)),
     listWords(uid),
@@ -605,6 +936,7 @@ export async function publishFolderSnapshot(
     published_at: publishedAt,
     schema_version: 1,
     status: "publishing",
+    visibility,
   };
   const index = {
     source_folder_id: folderId,
@@ -612,6 +944,7 @@ export async function publishFolderSnapshot(
     word_count: sourceCards.length,
     published_at: publishedAt,
     status: "publishing",
+    visibility,
   };
 
   try {
@@ -646,18 +979,28 @@ export async function publishFolderSnapshot(
     throw error;
   }
 
-  return { shareId, folderName, wordCount: sourceCards.length };
+  return { shareId, folderName, wordCount: sourceCards.length, visibility };
 }
 
 export async function getPublicSnapshot(
   shareId: string,
 ): Promise<SharedSnapshot> {
-  const metaSnapshot = await getDoc(snapshotRef(shareId));
+  let metaSnapshot;
+  try {
+    metaSnapshot = await getDoc(snapshotRef(shareId));
+  } catch {
+    throw new Error("This shared folder is unavailable.");
+  }
   if (!metaSnapshot.exists() || metaSnapshot.data().status !== "active") {
     throw new Error("This shared folder is unavailable.");
   }
 
-  const wordsSnapshot = await getDocs(snapshotWordsRef(shareId));
+  let wordsSnapshot;
+  try {
+    wordsSnapshot = await getDocs(snapshotWordsRef(shareId));
+  } catch {
+    throw new Error("This shared folder is unavailable.");
+  }
   const words = wordsSnapshot.docs
     .map((entry) => normalizeSnapshotWord(entry.id, entry.data()))
     .filter((word) => word.word && word.meaning)

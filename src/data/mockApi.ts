@@ -1,4 +1,10 @@
 import type { Card, CardStatus, Draft, Folder } from "../types/card";
+import type {
+  TeacherInvite,
+  TeacherStudent,
+  UserProfile,
+  UserRole,
+} from "../types/access";
 import {
   MAX_SHARED_SNAPSHOT_WORDS,
   nextAvailableFolderName,
@@ -8,12 +14,14 @@ import type {
   PublishedSnapshot,
   PublishSnapshotResult,
   SharedSnapshot,
+  SharedSnapshotVisibility,
   SharedSnapshotWord,
 } from "../types/sharedSnapshot";
 import { reviewFieldsForStatus } from "../utils/reviewAlgorithm";
 
 const LEGACY_STORAGE_KEY = "inklex.mock.v1";
 const SHARED_STORAGE_KEY = "inklex.sharedSnapshots.v1";
+const ACCESS_STORAGE_KEY = "inklex.access.v1";
 
 function storageKey(uid: string) {
   return `${LEGACY_STORAGE_KEY}.${uid}`;
@@ -37,7 +45,14 @@ type StoredSharedSnapshot = {
   folderName: string;
   publishedAt: string;
   status: "publishing" | "active" | "revoked";
+  visibility: SharedSnapshotVisibility;
   words: SharedSnapshotWord[];
+};
+
+type MockAccessState = {
+  profiles: UserProfile[];
+  invites: TeacherInvite[];
+  studentsByTeacher: Record<string, TeacherStudent[]>;
 };
 
 function nowIso() {
@@ -101,6 +116,225 @@ function readSharedSnapshots(): StoredSharedSnapshot[] {
 
 function writeSharedSnapshots(snapshots: StoredSharedSnapshot[]) {
   window.localStorage.setItem(SHARED_STORAGE_KEY, JSON.stringify(snapshots));
+}
+
+function readAccessState(): MockAccessState {
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(ACCESS_STORAGE_KEY) ?? "{}",
+    ) as Partial<MockAccessState>;
+    return {
+      profiles: Array.isArray(parsed.profiles) ? parsed.profiles : [],
+      invites: Array.isArray(parsed.invites) ? parsed.invites : [],
+      studentsByTeacher:
+        parsed.studentsByTeacher &&
+        typeof parsed.studentsByTeacher === "object"
+          ? parsed.studentsByTeacher
+          : {},
+    };
+  } catch {
+    return { profiles: [], invites: [], studentsByTeacher: {} };
+  }
+}
+
+function writeAccessState(state: MockAccessState) {
+  window.localStorage.setItem(ACCESS_STORAGE_KEY, JSON.stringify(state));
+}
+
+function mutateAccess(updater: (state: MockAccessState) => void) {
+  const state = readAccessState();
+  updater(state);
+  writeAccessState(state);
+  return state;
+}
+
+export async function ensureUserAccess(
+  uid: string,
+  email: string | null,
+  displayName: string | null,
+): Promise<UserProfile> {
+  const state = readAccessState();
+  const existing = state.profiles.find((profile) => profile.uid === uid);
+  const stamp = nowIso();
+  const profile: UserProfile = {
+    uid,
+    email: (email ?? "").trim().toLowerCase(),
+    displayName: displayName?.trim() || null,
+    role: existing?.role ?? (uid === "local-dev" ? "admin" : "student"),
+    createdAt: existing?.createdAt ?? stamp,
+    updatedAt: stamp,
+  };
+  mutateAccess((current) => {
+    current.profiles = current.profiles.filter((entry) => entry.uid !== uid);
+    current.profiles.push(profile);
+  });
+  return profile;
+}
+
+export async function getUserProfile(uid: string): Promise<UserProfile> {
+  const profile = readAccessState().profiles.find((entry) => entry.uid === uid);
+  if (!profile) {
+    throw new Error("User profile not found.");
+  }
+  return profile;
+}
+
+export async function listUserProfiles(): Promise<UserProfile[]> {
+  return [...readAccessState().profiles].sort((a, b) =>
+    a.email.localeCompare(b.email),
+  );
+}
+
+export async function assignUserRole(
+  adminUid: string,
+  targetUid: string,
+  role: UserRole,
+): Promise<void> {
+  const state = readAccessState();
+  const admin = state.profiles.find((profile) => profile.uid === adminUid);
+  if (admin?.role !== "admin") {
+    throw new Error("Admin access required.");
+  }
+  if (adminUid === targetUid) {
+    throw new Error("You cannot change your own admin role.");
+  }
+  const target = state.profiles.find((profile) => profile.uid === targetUid);
+  if (!target) {
+    throw new Error("User profile not found.");
+  }
+  mutateAccess((current) => {
+    const profile = current.profiles.find((entry) => entry.uid === targetUid);
+    if (profile) {
+      profile.role = role;
+      profile.updatedAt = nowIso();
+    }
+  });
+}
+
+export async function createTeacherInvite(
+  teacherUid: string,
+  teacherName: string,
+  studentEmail: string,
+): Promise<TeacherInvite> {
+  const state = readAccessState();
+  const teacher = state.profiles.find((profile) => profile.uid === teacherUid);
+  if (teacher?.role !== "teacher" && teacher?.role !== "admin") {
+    throw new Error("Teacher access required.");
+  }
+  const emailLower = studentEmail.trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(emailLower)) {
+    throw new Error("Enter a valid student email.");
+  }
+  const existing = state.invites.find(
+    (invite) =>
+      invite.teacherUid === teacherUid &&
+      invite.studentEmail === emailLower &&
+      invite.status === "pending" &&
+      invite.expiresAt > nowIso(),
+  );
+  if (existing) {
+    return existing;
+  }
+  const invite: TeacherInvite = {
+    id: createId(),
+    teacherUid,
+    teacherName: teacherName.trim() || "InkLex teacher",
+    studentEmail: emailLower,
+    status: "pending",
+    createdAt: nowIso(),
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    acceptedByUid: null,
+  };
+  mutateAccess((current) => current.invites.unshift(invite));
+  return invite;
+}
+
+export async function listTeacherInvites(
+  teacherUid: string,
+): Promise<TeacherInvite[]> {
+  return readAccessState().invites
+    .filter((invite) => invite.teacherUid === teacherUid)
+    .map((invite) =>
+      invite.status === "pending" && invite.expiresAt < nowIso()
+        ? { ...invite, status: "expired" as const }
+        : invite,
+    );
+}
+
+export async function getTeacherInvite(
+  inviteId: string,
+): Promise<TeacherInvite> {
+  const invite = readAccessState().invites.find((entry) => entry.id === inviteId);
+  if (!invite) {
+    throw new Error("Invitation not found.");
+  }
+  return invite.status === "pending" && invite.expiresAt < nowIso()
+    ? { ...invite, status: "expired" }
+    : invite;
+}
+
+export async function acceptTeacherInvite(
+  inviteId: string,
+  studentUid: string,
+  studentEmail: string,
+  displayName: string | null,
+): Promise<string> {
+  const invite = await getTeacherInvite(inviteId);
+  if (invite.status !== "pending") {
+    throw new Error("This invitation is no longer active.");
+  }
+  if (invite.studentEmail !== studentEmail.trim().toLowerCase()) {
+    throw new Error(`Sign in as ${invite.studentEmail} to accept this invitation.`);
+  }
+  mutateAccess((state) => {
+    const storedInvite = state.invites.find((entry) => entry.id === inviteId);
+    if (storedInvite) {
+      storedInvite.status = "accepted";
+      storedInvite.acceptedByUid = studentUid;
+    }
+    const students = state.studentsByTeacher[invite.teacherUid] ?? [];
+    if (!students.some((student) => student.uid === studentUid)) {
+      students.push({
+        uid: studentUid,
+        email: invite.studentEmail,
+        displayName: displayName?.trim() || null,
+        acceptedAt: nowIso(),
+      });
+    }
+    state.studentsByTeacher[invite.teacherUid] = students;
+  });
+  return invite.teacherUid;
+}
+
+export async function listTeacherStudents(
+  teacherUid: string,
+): Promise<TeacherStudent[]> {
+  return [...(readAccessState().studentsByTeacher[teacherUid] ?? [])].sort(
+    (a, b) => a.email.localeCompare(b.email),
+  );
+}
+
+export async function removeTeacherStudent(
+  teacherUid: string,
+  studentUid: string,
+): Promise<void> {
+  mutateAccess((state) => {
+    state.studentsByTeacher[teacherUid] = (
+      state.studentsByTeacher[teacherUid] ?? []
+    ).filter((student) => student.uid !== studentUid);
+  });
+}
+
+export async function revokeTeacherInvite(
+  teacherUid: string,
+  inviteId: string,
+): Promise<void> {
+  mutateAccess((state) => {
+    const invite = state.invites.find(
+      (entry) => entry.id === inviteId && entry.teacherUid === teacherUid,
+    );
+    if (invite?.status === "pending") invite.status = "revoked";
+  });
 }
 
 export async function listWords(uid: string): Promise<Card[]> {
@@ -449,7 +683,14 @@ export async function importWords(uid: string, rows: ImportInput[]): Promise<{
 export async function publishFolderSnapshot(
   uid: string,
   folderId: string,
+  visibility: SharedSnapshotVisibility = "public",
 ): Promise<PublishSnapshotResult> {
+  if (visibility === "students") {
+    const profile = await getUserProfile(uid);
+    if (profile.role !== "teacher" && profile.role !== "admin") {
+      throw new Error("Only teachers can share with their students.");
+    }
+  }
   const state = readState(uid);
   const folder = state.folders.find((entry) => entry.id === folderId);
   if (!folder) {
@@ -474,6 +715,7 @@ export async function publishFolderSnapshot(
     folderName: folder.name,
     publishedAt: nowIso(),
     status: "active",
+    visibility,
     words: sourceWords.map((word) => ({
       id: createId(),
       word: word.word,
@@ -487,17 +729,27 @@ export async function publishFolderSnapshot(
     shareId,
     folderName: folder.name,
     wordCount: sourceWords.length,
+    visibility,
   };
 }
 
 export async function getPublicSnapshot(
   shareId: string,
+  viewerUid?: string,
 ): Promise<SharedSnapshot> {
   const snapshot = readSharedSnapshots().find(
     (entry) => entry.id === shareId && entry.status === "active",
   );
   if (!snapshot) {
     throw new Error("This shared folder is unavailable.");
+  }
+  const visibility = snapshot.visibility ?? "public";
+  if (visibility === "students" && viewerUid !== snapshot.ownerUid) {
+    const students =
+      readAccessState().studentsByTeacher[snapshot.ownerUid] ?? [];
+    if (!viewerUid || !students.some((student) => student.uid === viewerUid)) {
+      throw new Error("This link is available only to this teacher's students.");
+    }
   }
   const sourceWordCount = Array.isArray(snapshot.words) ? snapshot.words.length : 0;
   const words = Array.isArray(snapshot.words)
@@ -519,6 +771,7 @@ export async function getPublicSnapshot(
       wordCount: snapshot.words.length,
       publishedAt: snapshot.publishedAt,
       status: snapshot.status,
+      visibility,
     },
     words: [...words].sort((a, b) => a.word.localeCompare(b.word)),
   };
@@ -541,6 +794,7 @@ export async function listPublishedSnapshots(
       wordCount: snapshot.words.length,
       publishedAt: snapshot.publishedAt,
       status: snapshot.status,
+      visibility: snapshot.visibility ?? "public",
     }))
     .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
 }
@@ -580,7 +834,7 @@ export async function copySharedSnapshot(
     }
   }
 
-  const snapshot = await getPublicSnapshot(shareId);
+  const snapshot = await getPublicSnapshot(shareId, uid);
   const existing = currentState.folders;
   const folderName = nextAvailableFolderName(
     snapshot.meta.folderName,
@@ -633,4 +887,5 @@ export function clearMockDatabase(uid = "local-dev") {
     window.localStorage.removeItem(LEGACY_STORAGE_KEY);
   }
   window.localStorage.removeItem(SHARED_STORAGE_KEY);
+  window.localStorage.removeItem(ACCESS_STORAGE_KEY);
 }

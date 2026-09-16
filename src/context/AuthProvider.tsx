@@ -10,6 +10,8 @@ import {
 } from "firebase/auth";
 import { useMockDb } from "../lib/dataMode";
 import { getAuth } from "../lib/firebase";
+import { ensureUserAccess } from "../data/api";
+import type { UserProfile } from "../types/access";
 import {
   AuthContext,
   type AuthContextValue,
@@ -39,23 +41,47 @@ const mockUser: AuthUser = {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const mockMode = useMockDb();
   const [user, setUser] = useState<AuthUser | null>(mockMode ? mockUser : null);
-  const [loading, setLoading] = useState(!mockMode);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (mockMode) {
       setUser(mockUser);
-      setLoading(false);
+      ensureUserAccess(mockUser.uid, mockUser.email, mockUser.displayName)
+        .then(setProfile)
+        .finally(() => setLoading(false));
       return;
     }
 
     const unsubscribe = onAuthStateChanged(
       getAuth(),
-      (nextUser) => {
-        setUser(nextUser ? toAuthUser(nextUser) : null);
-        setLoading(false);
+      async (nextUser) => {
+        const nextAuthUser = nextUser ? toAuthUser(nextUser) : null;
+        setUser(nextAuthUser);
+        if (!nextAuthUser) {
+          setProfile(null);
+          setLoading(false);
+          return;
+        }
+        setLoading(true);
+        try {
+          setProfile(
+            await ensureUserAccess(
+              nextAuthUser.uid,
+              nextAuthUser.email,
+              nextAuthUser.displayName,
+            ),
+          );
+        } catch (error) {
+          console.error("[InkLex] access profile load failed", error);
+          setProfile(null);
+        } finally {
+          setLoading(false);
+        }
       },
       () => {
         setUser(null);
+        setProfile(null);
         setLoading(false);
       },
     );
@@ -65,7 +91,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
+      profile,
+      role: profile?.role ?? "student",
       loading,
+      async refreshAccess() {
+        if (!user) return;
+        setProfile(
+          await ensureUserAccess(user.uid, user.email, user.displayName),
+        );
+      },
       async signInWithGoogle() {
         if (mockMode) return;
         await signInWithPopup(getAuth(), new GoogleAuthProvider());
@@ -83,7 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await firebaseSignOut(getAuth());
       },
     }),
-    [loading, mockMode, user],
+    [loading, mockMode, profile, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

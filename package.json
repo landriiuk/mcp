@@ -17,7 +17,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:rules": "firebase emulators:exec --only firestore --project demo-inklex-local \"vitest run --config vite.rules.config.js\"",
-    "migrate:auth": "node scripts/migrate-firestore-to-user.mjs"
+    "migrate:auth": "node scripts/migrate-firestore-to-user.mjs",
+    "set:role": "node scripts/set-user-role.mjs"
   },
   "dependencies": {
     "firebase": "^11.10.0",

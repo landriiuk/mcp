@@ -13,7 +13,9 @@ import {
   getDoc,
   getDocs,
   setDoc,
+  Timestamp,
   updateDoc,
+  writeBatch,
 } from "firebase/firestore";
 
 let testEnv: RulesTestEnvironment;
@@ -39,6 +41,7 @@ const validSnapshot = {
   published_at: "2026-09-14T00:00:00.000Z",
   schema_version: 1,
   status: "publishing",
+  visibility: "public",
 };
 
 const validSnapshotWord = {
@@ -67,6 +70,12 @@ beforeEach(async () => {
 afterAll(async () => {
   await testEnv.cleanup();
 });
+
+async function seed(path: string, data: Record<string, unknown>) {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), path), data);
+  });
+}
 
 describe("user-owned Firestore data", () => {
   it("allows the owner to create and read a word", async () => {
@@ -106,6 +115,132 @@ describe("user-owned Firestore data", () => {
         name: "",
         updated_at: "2026-09-14T00:00:00.000Z",
       }),
+    );
+  });
+});
+
+describe("roles and teacher access", () => {
+  const role = (value: "student" | "teacher" | "admin", assignedBy: string | null = null) => ({
+    role: value,
+    assigned_at: "2026-09-16T00:00:00.000Z",
+    assigned_by_uid: assignedBy,
+    schema_version: 1,
+  });
+
+  it("defaults self-service roles to student and blocks privilege escalation", async () => {
+    const db = testEnv.authenticatedContext("alice").firestore();
+    await assertSucceeds(setDoc(doc(db, "roles/alice"), role("student")));
+    await assertFails(setDoc(doc(db, "roles/bob"), role("student")));
+
+    const otherDb = testEnv.authenticatedContext("mallory").firestore();
+    await assertFails(setDoc(doc(otherDb, "roles/mallory"), role("admin")));
+    await assertFails(updateDoc(doc(db, "roles/alice"), { role: "teacher" }));
+  });
+
+  it("lets admins assign roles without exposing private vocabulary", async () => {
+    await seed("roles/admin", role("admin"));
+    await seed("roles/bob", role("student"));
+    await seed("users/bob/words/private", validWord);
+
+    const db = testEnv.authenticatedContext("admin").firestore();
+    await assertSucceeds(
+      setDoc(doc(db, "roles/bob"), role("teacher", "admin")),
+    );
+    await assertFails(getDoc(doc(db, "users/bob/words/private")));
+  });
+
+  it("accepts an email invite atomically and creates membership", async () => {
+    await seed("roles/teacher", role("teacher"));
+    await seed("roles/student", role("student"));
+    const teacherDb = testEnv
+      .authenticatedContext("teacher", { email: "teacher@example.com" })
+      .firestore();
+    await assertSucceeds(
+      setDoc(doc(teacherDb, "teacherInvites/invite-1"), {
+        teacher_uid: "teacher",
+        teacher_name: "Ms Green",
+        student_email_lower: "student@example.com",
+        status: "pending",
+        created_at: "2026-09-16T00:00:00.000Z",
+        expires_at: Timestamp.fromDate(new Date(Date.now() + 86_400_000)),
+        accepted_by_uid: null,
+        accepted_at: null,
+        schema_version: 1,
+      }),
+    );
+
+    const wrongDb = testEnv
+      .authenticatedContext("mallory", { email: "wrong@example.com" })
+      .firestore();
+    await assertFails(getDoc(doc(wrongDb, "teacherInvites/invite-1")));
+
+    const studentDb = testEnv
+      .authenticatedContext("student", { email: "student@example.com" })
+      .firestore();
+    const batch = writeBatch(studentDb);
+    batch.update(doc(studentDb, "teacherInvites/invite-1"), {
+      status: "accepted",
+      accepted_by_uid: "student",
+      accepted_at: "2026-09-16T00:01:00.000Z",
+    });
+    batch.set(doc(studentDb, "teachers/teacher/students/student"), {
+      invite_id: "invite-1",
+      student_email_lower: "student@example.com",
+      display_name: "Student",
+      accepted_at: "2026-09-16T00:01:00.000Z",
+      schema_version: 1,
+    });
+    await assertSucceeds(batch.commit());
+  });
+
+  it("limits student-only snapshots to enrolled students", async () => {
+    await seed("roles/teacher", role("teacher"));
+    await seed("teachers/teacher/students/student", {
+      invite_id: "invite-1",
+      student_email_lower: "student@example.com",
+      display_name: "Student",
+      accepted_at: "2026-09-16T00:01:00.000Z",
+      schema_version: 1,
+    });
+    const teacherDb = testEnv.authenticatedContext("teacher").firestore();
+    const snapshotRef = doc(teacherDb, "sharedSnapshots/private-share");
+    await assertSucceeds(
+      setDoc(snapshotRef, {
+        ...validSnapshot,
+        owner_uid: "teacher",
+        visibility: "students",
+      }),
+    );
+    await assertSucceeds(
+      setDoc(
+        doc(teacherDb, "sharedSnapshots/private-share/words/word-1"),
+        validSnapshotWord,
+      ),
+    );
+    await assertSucceeds(updateDoc(snapshotRef, { status: "active" }));
+
+    await assertFails(
+      getDoc(
+        doc(
+          testEnv.unauthenticatedContext().firestore(),
+          "sharedSnapshots/private-share",
+        ),
+      ),
+    );
+    await assertFails(
+      getDoc(
+        doc(
+          testEnv.authenticatedContext("outsider").firestore(),
+          "sharedSnapshots/private-share",
+        ),
+      ),
+    );
+    const studentDb = testEnv.authenticatedContext("student").firestore();
+    await assertSucceeds(
+      getDoc(doc(studentDb, "sharedSnapshots/private-share")),
+    );
+    await assertSucceeds(
+      getDoc(doc(studentDb, "sharedSnapshots/private-share/words/word-1")),
     );
   });
 });
