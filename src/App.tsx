@@ -7,6 +7,7 @@ import { QuickAdd, type QuickAddDraft } from "./components/wordbox/add-card/Quic
 import { ImportWords } from "./components/wordbox/import/ImportWords";
 import { FolderSidebar } from "./components/sidebar/FolderSidebar";
 import { ShareFolderModal } from "./components/share/ShareFolderModal";
+import { SupportModal } from "./components/support/SupportModal";
 import { FOLDER_NAME_MAX_LENGTH, FOLDER_NAME_TOO_LONG_ERROR } from "./constants";
 import {
   createFolder,
@@ -55,7 +56,7 @@ const emptyDraft: Draft = {
 function App() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, signOut } = useAuth();
+  const { role, user, signOut } = useAuth();
   const uid = user?.uid ?? "";
   const {
     folderId: activeFolder,
@@ -77,6 +78,7 @@ function App() {
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [sharingFolder, setSharingFolder] = useState<Folder | null>(null);
+  const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
@@ -956,7 +958,9 @@ function App() {
         accountEmail={user?.email ?? null}
         accountPhotoUrl={user?.photoURL ?? null}
         isMockAccount={Boolean(user?.isMock)}
+        role={role}
         onSignOut={() => void handleSignOut()}
+        onOpenSupport={() => setIsSupportOpen(true)}
       />
 
       <Wordbox
@@ -1053,8 +1057,20 @@ function App() {
             <ShareFolderModal
               uid={uid}
               folder={sharingFolder}
+              role={role}
               onClose={() => setSharingFolder(null)}
             />
+          </div>
+        </div>
+      ) : null}
+
+      {isSupportOpen ? (
+        <div className="modalOverlay" onClick={() => setIsSupportOpen(false)}>
+          <div
+            className="modalWindow modalWindowCompact"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <SupportModal onClose={() => setIsSupportOpen(false)} />
           </div>
         </div>
       ) : null}

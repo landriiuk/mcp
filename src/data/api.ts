@@ -1,5 +1,7 @@
 import { useMockDb } from "../lib/dataMode";
 import type { Card, Draft, Folder } from "../types/card";
+import type { UserRole } from "../types/access";
+import type { SharedSnapshotVisibility } from "../types/sharedSnapshot";
 import * as mockApi from "./mockApi";
 
 export type { ImportInput } from "./mockApi";
@@ -93,16 +95,20 @@ export async function importWords(uid: string, rows: ImportInput[]) {
   return (await firestore()).importWords(uid, rows);
 }
 
-export async function publishFolderSnapshot(uid: string, folderId: string) {
+export async function publishFolderSnapshot(
+  uid: string,
+  folderId: string,
+  visibility: SharedSnapshotVisibility = "public",
+) {
   if (useMockDb()) {
-    return mockApi.publishFolderSnapshot(uid, folderId);
+    return mockApi.publishFolderSnapshot(uid, folderId, visibility);
   }
-  return (await firestore()).publishFolderSnapshot(uid, folderId);
+  return (await firestore()).publishFolderSnapshot(uid, folderId, visibility);
 }
 
-export async function getPublicSnapshot(shareId: string) {
+export async function getPublicSnapshot(shareId: string, viewerUid?: string) {
   if (useMockDb()) {
-    return mockApi.getPublicSnapshot(shareId);
+    return mockApi.getPublicSnapshot(shareId, viewerUid);
   }
   return (await firestore()).getPublicSnapshot(shareId);
 }
@@ -126,4 +132,102 @@ export async function copySharedSnapshot(uid: string, shareId: string) {
     return mockApi.copySharedSnapshot(uid, shareId);
   }
   return (await firestore()).copySharedSnapshot(uid, shareId);
+}
+
+export async function ensureUserAccess(
+  uid: string,
+  email: string | null,
+  displayName: string | null,
+) {
+  if (useMockDb()) {
+    return mockApi.ensureUserAccess(uid, email, displayName);
+  }
+  return (await firestore()).ensureUserAccess(uid, email, displayName);
+}
+
+export async function getUserProfile(uid: string) {
+  if (useMockDb()) return mockApi.getUserProfile(uid);
+  return (await firestore()).getUserProfile(uid);
+}
+
+export async function listUserProfiles() {
+  if (useMockDb()) return mockApi.listUserProfiles();
+  return (await firestore()).listUserProfiles();
+}
+
+export async function assignUserRole(
+  adminUid: string,
+  targetUid: string,
+  role: UserRole,
+) {
+  if (useMockDb()) return mockApi.assignUserRole(adminUid, targetUid, role);
+  return (await firestore()).assignUserRole(adminUid, targetUid, role);
+}
+
+export async function createTeacherInvite(
+  teacherUid: string,
+  teacherName: string,
+  studentEmail: string,
+) {
+  if (useMockDb()) {
+    return mockApi.createTeacherInvite(teacherUid, teacherName, studentEmail);
+  }
+  return (await firestore()).createTeacherInvite(
+    teacherUid,
+    teacherName,
+    studentEmail,
+  );
+}
+
+export async function listTeacherInvites(teacherUid: string) {
+  if (useMockDb()) return mockApi.listTeacherInvites(teacherUid);
+  return (await firestore()).listTeacherInvites(teacherUid);
+}
+
+export async function getTeacherInvite(inviteId: string) {
+  if (useMockDb()) return mockApi.getTeacherInvite(inviteId);
+  return (await firestore()).getTeacherInvite(inviteId);
+}
+
+export async function acceptTeacherInvite(
+  inviteId: string,
+  studentUid: string,
+  studentEmail: string,
+  displayName: string | null,
+) {
+  if (useMockDb()) {
+    return mockApi.acceptTeacherInvite(
+      inviteId,
+      studentUid,
+      studentEmail,
+      displayName,
+    );
+  }
+  return (await firestore()).acceptTeacherInvite(
+    inviteId,
+    studentUid,
+    studentEmail,
+    displayName,
+  );
+}
+
+export async function listTeacherStudents(teacherUid: string) {
+  if (useMockDb()) return mockApi.listTeacherStudents(teacherUid);
+  return (await firestore()).listTeacherStudents(teacherUid);
+}
+
+export async function removeTeacherStudent(
+  teacherUid: string,
+  studentUid: string,
+) {
+  if (useMockDb()) return mockApi.removeTeacherStudent(teacherUid, studentUid);
+  return (await firestore()).removeTeacherStudent(teacherUid, studentUid);
+}
+
+export async function revokeTeacherInvite(
+  teacherUid: string,
+  inviteId: string,
+) {
+  if (useMockDb()) return mockApi.revokeTeacherInvite(teacherUid, inviteId);
+  return (await firestore()).revokeTeacherInvite(teacherUid, inviteId);
 }

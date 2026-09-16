@@ -7,6 +7,10 @@ import { AuthProvider } from './context/AuthProvider'
 import { AuthPage } from './components/auth/AuthPage'
 import { RequireAuth } from './components/auth/RequireAuth'
 import { SharePreviewPage } from './components/share/SharePreviewPage'
+import { InviteAcceptPage } from './components/teacher/InviteAcceptPage'
+import { TeacherDashboard } from './components/teacher/TeacherDashboard'
+import { AdminRolesPage } from './components/admin/AdminRolesPage'
+import { RequireRole } from './components/auth/RequireRole'
 
 /** One-shot wipe: open /?clearDb=1 to clear mock DB + InkLex browser storage. */
 function wipeLocalInklexDataIfRequested(): boolean {
@@ -52,6 +56,27 @@ if (!wipeLocalInklexDataIfRequested()) {
             <Route path="/login" element={<AuthPage mode="login" />} />
             <Route path="/signup" element={<AuthPage mode="signup" />} />
             <Route path="/share/:shareId" element={<SharePreviewPage />} />
+            <Route path="/invite/:inviteId" element={<InviteAcceptPage />} />
+            <Route
+              path="/teacher"
+              element={
+                <RequireAuth>
+                  <RequireRole allowed={['teacher', 'admin']}>
+                    <TeacherDashboard />
+                  </RequireRole>
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <RequireAuth>
+                  <RequireRole allowed={['admin']}>
+                    <AdminRolesPage />
+                  </RequireRole>
+                </RequireAuth>
+              }
+            />
             {/* Single App instance so / ↔ /learning does not remount and drop the session. */}
             <Route
               path="*"

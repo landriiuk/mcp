@@ -5,18 +5,25 @@ import {
   revokeSharedSnapshot,
 } from "../../data/api";
 import type { Folder } from "../../types/card";
-import type { PublishedSnapshot } from "../../types/sharedSnapshot";
+import type { UserRole } from "../../types/access";
+import type {
+  PublishedSnapshot,
+  SharedSnapshotVisibility,
+} from "../../types/sharedSnapshot";
+import { SUPPORT_EMAIL } from "../../lib/support";
 import { sharePath } from "../../utils/routes";
 
 type ShareFolderModalProps = {
   uid: string;
   folder: Folder;
+  role: UserRole;
   onClose: () => void;
 };
 
 export function ShareFolderModal({
   uid,
   folder,
+  role,
   onClose,
 }: ShareFolderModalProps) {
   const [snapshots, setSnapshots] = useState<PublishedSnapshot[]>([]);
@@ -26,6 +33,10 @@ export function ShareFolderModal({
   const [copied, setCopied] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [loadVersion, setLoadVersion] = useState(0);
+  const [visibility, setVisibility] =
+    useState<SharedSnapshotVisibility>(
+      role === "teacher" || role === "admin" ? "students" : "public",
+    );
   const dialogRef = useRef<HTMLElement>(null);
 
   const activeSnapshot = useMemo(
@@ -80,7 +91,7 @@ export function ShareFolderModal({
     setAction("publish");
     setError(null);
     try {
-      const result = await publishFolderSnapshot(uid, folder.id);
+      const result = await publishFolderSnapshot(uid, folder.id, visibility);
       setSnapshots((current) => [
         {
           id: result.shareId,
@@ -89,6 +100,7 @@ export function ShareFolderModal({
           wordCount: result.wordCount,
           publishedAt: new Date().toISOString(),
           status: "active",
+          visibility: result.visibility,
         },
         ...current,
       ]);
@@ -186,8 +198,9 @@ export function ShareFolderModal({
       {!loading && !loadFailed && activeSnapshot ? (
         <>
           <p className="shareModalLead">
-            Anyone with this link can preview {activeSnapshot.wordCount} words and
-            add a separate copy to their InkLex account.
+            {activeSnapshot.visibility === "students"
+              ? `Only your students can open these ${activeSnapshot.wordCount} words after signing in.`
+              : `Anyone with this link can preview ${activeSnapshot.wordCount} words and add a separate copy.`}
           </p>
           <div className="shareLinkRow">
             <input
@@ -217,6 +230,40 @@ export function ShareFolderModal({
             Create a read-only snapshot. Later changes to this folder will not
             change the shared copy.
           </p>
+          {role === "teacher" || role === "admin" ? (
+            <fieldset className="shareVisibilityOptions">
+              <legend>Who can open this link?</legend>
+              <label>
+                <input
+                  checked={visibility === "students"}
+                  name="share-visibility"
+                  onChange={() => setVisibility("students")}
+                  type="radio"
+                />
+                <span>
+                  <strong>My students only</strong>
+                  <small>Students who accepted your invitation.</small>
+                </span>
+              </label>
+              <label>
+                <input
+                  checked={visibility === "public"}
+                  name="share-visibility"
+                  onChange={() => setVisibility("public")}
+                  type="radio"
+                />
+                <span>
+                  <strong>Anyone with the link</strong>
+                  <small>No InkLex teacher relationship required.</small>
+                </span>
+              </label>
+            </fieldset>
+          ) : (
+            <p className="shareVisibilityHint">
+              This creates a public link. To share only with your class, write to{" "}
+              {SUPPORT_EMAIL}.
+            </p>
+          )}
           <button
             className="primary sharePublishButton"
             disabled={Boolean(action)}

@@ -57,3 +57,38 @@ export function userImportedSnapshotsPath(uid: string): string {
 export function userImportedSnapshotPath(uid: string, shareId: string): string {
   return `${userImportedSnapshotsPath(uid)}/${requireShareId(shareId)}`;
 }
+
+export function rolePath(uid: string): string {
+  return `roles/${requireUid(uid)}`;
+}
+
+export function userProfilePath(uid: string): string {
+  return `userProfiles/${requireUid(uid)}`;
+}
+
+export function userProfilesPath(): string {
+  return "userProfiles";
+}
+
+export function rolesPath(): string {
+  return "roles";
+}
+
+export function teacherInvitePath(inviteId: string): string {
+  return `teacherInvites/${requireShareId(inviteId)}`;
+}
+
+export function teacherInvitesPath(): string {
+  return "teacherInvites";
+}
+
+export function teacherStudentsPath(teacherUid: string): string {
+  return `teachers/${requireUid(teacherUid)}/students`;
+}
+
+export function teacherStudentPath(
+  teacherUid: string,
+  studentUid: string,
+): string {
+  return `${teacherStudentsPath(teacherUid)}/${requireUid(studentUid)}`;
+}
