@@ -6,6 +6,7 @@ import { CardEditor } from "./components/wordbox/add-card/CardEditor";
 import { QuickAdd, type QuickAddDraft } from "./components/wordbox/add-card/QuickAdd";
 import { ImportWords } from "./components/wordbox/import/ImportWords";
 import { FolderSidebar } from "./components/sidebar/FolderSidebar";
+import { ShareFolderModal } from "./components/share/ShareFolderModal";
 import { FOLDER_NAME_MAX_LENGTH, FOLDER_NAME_TOO_LONG_ERROR } from "./constants";
 import {
   createFolder,
@@ -14,9 +15,11 @@ import {
   deleteWord,
   importWords,
   listFolders,
+  listPublishedSnapshots,
   purgeLegacyGeneralFolder,
   reconcileCardFolderIds,
   renameFolder,
+  revokeSharedSnapshot,
   saveWord,
 } from "./data/api";
 import { isDataStoreConfigured, useMockDb } from "./lib/dataMode";
@@ -73,6 +76,7 @@ function App() {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [sharingFolder, setSharingFolder] = useState<Folder | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
@@ -612,7 +616,21 @@ function App() {
   }
 
   async function deleteFolder(folderId: string) {
+    const folder = folders.find((entry) => entry.id === folderId);
+    const confirmed = window.confirm(
+      `Delete "${folder?.name ?? "this folder"}"? Its cards will move to All and active share links will be revoked.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
     try {
+      const sharedSnapshots = await listPublishedSnapshots(uid, folderId);
+      await Promise.all(
+        sharedSnapshots
+          .filter((snapshot) => snapshot.status !== "revoked")
+          .map((snapshot) => revokeSharedSnapshot(uid, snapshot.id)),
+      );
       await deleteFolderDoc(uid, folderId);
 
       setCards((currentCards) =>
@@ -925,6 +943,10 @@ function App() {
         folderInputRef={folderInputRef}
         onStartCreatingFolder={startCreatingFolder}
         onStartEditingFolder={startEditingFolder}
+        onShareFolder={(folder) => {
+          setSharingFolder(folder);
+          setIsMobileNavOpen(false);
+        }}
         onDeleteFolder={deleteFolder}
         onFolderDraftChange={handleFolderDraftChange}
         onFolderKeyDown={handleFolderInputKeyDown}
@@ -1021,6 +1043,21 @@ function App() {
           </div>
         </div>
       )}
+
+      {sharingFolder ? (
+        <div className="modalOverlay">
+          <div
+            className="modalWindow modalWindowCompact"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <ShareFolderModal
+              uid={uid}
+              folder={sharingFolder}
+              onClose={() => setSharingFolder(null)}
+            />
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

@@ -40,6 +40,10 @@ export function learningPath(folderId: string = "all"): string {
   return `/${encodeFolderId(folderId)}/${LEARNING_SEGMENT}`;
 }
 
+export function sharePath(shareId: string): string {
+  return `/share/${encodeURIComponent(shareId.trim())}`;
+}
+
 export function parseLocation(pathname: string): {
   folderId: string;
   isLearningMode: boolean;

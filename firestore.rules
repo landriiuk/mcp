@@ -44,6 +44,91 @@ service cloud.firestore {
         && request.resource.data.updated_at is string;
     }
 
+    function validSnapshotMeta() {
+      return request.resource.data.keys().hasOnly([
+        'owner_uid',
+        'folder_name',
+        'word_count',
+        'published_at',
+        'schema_version',
+        'status'
+      ])
+        && request.resource.data.owner_uid is string
+        && request.resource.data.owner_uid == request.auth.uid
+        && request.resource.data.folder_name is string
+        && request.resource.data.folder_name.size() > 0
+        && request.resource.data.folder_name.size() <= 50
+        && request.resource.data.word_count is number
+        && request.resource.data.word_count > 0
+        && request.resource.data.word_count <= 400
+        && request.resource.data.published_at is string
+        && request.resource.data.schema_version == 1
+        && request.resource.data.status in ['publishing', 'active', 'revoked'];
+    }
+
+    function validSnapshotWord() {
+      return request.resource.data.keys().hasOnly([
+        'word',
+        'meaning',
+        'example',
+        'tags'
+      ])
+        && request.resource.data.word is string
+        && request.resource.data.word.size() > 0
+        && request.resource.data.meaning is string
+        && request.resource.data.meaning.size() > 0
+        && request.resource.data.example is string
+        && request.resource.data.tags is list
+        && request.resource.data.tags.size() <= 3;
+    }
+
+    function snapshotData(shareId) {
+      return get(/databases/$(database)/documents/sharedSnapshots/$(shareId)).data;
+    }
+
+    function isSnapshotOwner(shareId) {
+      return request.auth != null
+        && snapshotData(shareId).owner_uid == request.auth.uid;
+    }
+
+    function isActiveSnapshot(shareId) {
+      return snapshotData(shareId).status == 'active';
+    }
+
+    function validPublishedSnapshotIndex() {
+      return request.resource.data.keys().hasOnly([
+        'source_folder_id',
+        'folder_name',
+        'word_count',
+        'published_at',
+        'status'
+      ])
+        && request.resource.data.source_folder_id is string
+        && request.resource.data.source_folder_id.size() > 0
+        && request.resource.data.folder_name is string
+        && request.resource.data.folder_name.size() > 0
+        && request.resource.data.folder_name.size() <= 50
+        && request.resource.data.word_count is number
+        && request.resource.data.word_count > 0
+        && request.resource.data.word_count <= 400
+        && request.resource.data.published_at is string
+        && request.resource.data.status in ['publishing', 'active', 'revoked'];
+    }
+
+    function validImportedSnapshotReceipt() {
+      return request.resource.data.keys().hasOnly([
+        'folder_id',
+        'folder_name',
+        'imported_at'
+      ])
+        && request.resource.data.folder_id is string
+        && request.resource.data.folder_id.size() > 0
+        && request.resource.data.folder_name is string
+        && request.resource.data.folder_name.size() > 0
+        && request.resource.data.folder_name.size() <= 50
+        && request.resource.data.imported_at is string;
+    }
+
     match /users/{uid}/folders/{folderId} {
       allow read, delete: if isOwner(uid);
       allow create, update: if isOwner(uid) && validFolder();
@@ -52,6 +137,52 @@ service cloud.firestore {
     match /users/{uid}/words/{wordId} {
       allow read, delete: if isOwner(uid);
       allow create, update: if isOwner(uid) && validWord();
+    }
+
+    match /users/{uid}/publishedSnapshots/{shareId} {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid) && validPublishedSnapshotIndex();
+    }
+
+    match /users/{uid}/importedSnapshots/{shareId} {
+      allow read, delete: if isOwner(uid);
+      allow create: if isOwner(uid) && validImportedSnapshotReceipt();
+      allow update: if false;
+    }
+
+    match /sharedSnapshots/{shareId} {
+      allow get: if resource.data.status == 'active'
+        || (request.auth != null && resource.data.owner_uid == request.auth.uid);
+      allow list: if false;
+      allow create: if request.auth != null
+        && validSnapshotMeta()
+        && request.resource.data.status == 'publishing';
+      allow update: if request.auth != null
+        && resource.data.owner_uid == request.auth.uid
+        && validSnapshotMeta()
+        && request.resource.data.owner_uid == resource.data.owner_uid
+        && request.resource.data.folder_name == resource.data.folder_name
+        && request.resource.data.word_count == resource.data.word_count
+        && request.resource.data.published_at == resource.data.published_at
+        && request.resource.data.schema_version == resource.data.schema_version
+        && (
+          (resource.data.status == 'publishing'
+            && request.resource.data.status in ['active', 'revoked'])
+          || (resource.data.status == 'active'
+            && request.resource.data.status == 'revoked')
+        );
+      allow delete: if request.auth != null
+        && resource.data.owner_uid == request.auth.uid;
+
+      match /words/{wordId} {
+        allow read: if isActiveSnapshot(shareId) || isSnapshotOwner(shareId);
+        allow create: if isSnapshotOwner(shareId)
+          && snapshotData(shareId).status == 'publishing'
+          && validSnapshotWord();
+        allow update: if false;
+        allow delete: if isSnapshotOwner(shareId)
+          && snapshotData(shareId).status != 'active';
+      }
     }
   }
 }

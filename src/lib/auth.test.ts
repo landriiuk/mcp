@@ -2,12 +2,20 @@ import { FirebaseError } from "firebase/app";
 import { describe, expect, it } from "vitest";
 import { authErrorMessage } from "./authErrors";
 import {
+  requireShareId,
   requireUid,
+  sharedSnapshotPath,
+  sharedSnapshotWordPath,
+  sharedSnapshotWordsPath,
   userFolderPath,
   userFoldersPath,
+  userImportedSnapshotPath,
+  userPublishedSnapshotPath,
   userWordPath,
   userWordsPath,
 } from "./userDataPath";
+import { nextAvailableFolderName } from "./sharedSnapshots";
+import { sharePath } from "../utils/routes";
 
 describe("authErrorMessage", () => {
   it("maps Firebase auth errors to user-facing copy", () => {
@@ -36,5 +44,29 @@ describe("user-scoped Firestore paths", () => {
   it("rejects missing or path-like uid values", () => {
     expect(() => requireUid("")).toThrow("valid user id");
     expect(() => requireUid("a/b")).toThrow("valid user id");
+  });
+
+  it("builds and validates shared snapshot paths", () => {
+    expect(sharedSnapshotPath("share-1")).toBe("sharedSnapshots/share-1");
+    expect(sharedSnapshotWordsPath("share-1")).toBe(
+      "sharedSnapshots/share-1/words",
+    );
+    expect(sharedSnapshotWordPath("share-1", "word-1")).toBe(
+      "sharedSnapshots/share-1/words/word-1",
+    );
+    expect(userPublishedSnapshotPath("alice", "share-1")).toBe(
+      "users/alice/publishedSnapshots/share-1",
+    );
+    expect(userImportedSnapshotPath("alice", "share-1")).toBe(
+      "users/alice/importedSnapshots/share-1",
+    );
+    expect(() => requireShareId("a/b")).toThrow("valid share id");
+  });
+
+  it("creates safe unique names and share URLs", () => {
+    expect(nextAvailableFolderName("Travel", ["Travel", "Travel (2)"])).toBe(
+      "Travel (3)",
+    );
+    expect(sharePath("share id")).toBe("/share/share%20id");
   });
 });

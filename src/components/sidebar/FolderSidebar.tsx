@@ -28,6 +28,7 @@ type FolderSidebarProps = {
   folderInputRef: RefObject<HTMLInputElement | null>;
   onStartCreatingFolder: () => void;
   onStartEditingFolder: (folder: Folder) => void;
+  onShareFolder: (folder: Folder) => void;
   onDeleteFolder: (folderId: string) => void;
   onFolderDraftChange: (value: string) => void;
   onFolderKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
@@ -102,6 +103,7 @@ export function FolderSidebar({
   folderInputRef,
   onStartCreatingFolder,
   onStartEditingFolder,
+  onShareFolder,
   onDeleteFolder,
   onFolderDraftChange,
   onFolderKeyDown,
@@ -236,6 +238,17 @@ export function FolderSidebar({
                     <strong className="folderCountBadge">{folderCount}</strong>
                   ) : (
                     <div className="folderInlineActions">
+                      <button
+                        className="folderInlineButton"
+                        onClick={() => onShareFolder(folder)}
+                        type="button"
+                        title={`Share ${folder.name}`}
+                        aria-label={`Share ${folder.name}`}
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M15 5a3 3 0 1 1 1.7 2.7l-7 3.5a3.2 3.2 0 0 1 0 1.6l7 3.5A3 3 0 1 1 16 18a2.8 2.8 0 0 1 .1-.8l-7-3.5a3 3 0 1 1 0-3.4l7-3.5A2.8 2.8 0 0 1 16 6c0-.3 0-.7-.1-1Z" />
+                        </svg>
+                      </button>
                       <button
                         className="folderInlineButton"
                         onClick={() => onStartEditingFolder(folder)}
