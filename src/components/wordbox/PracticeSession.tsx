@@ -14,9 +14,11 @@ import {
 import {
   buildDeckForFormat,
   getPracticeFormat,
+  isQuestFormat,
   QUEST_SESSION_KEYS,
   type PracticeFormatId,
 } from "../../lib/practiceFormats";
+import { questsCompletedLabel } from "../../types/practiceStats";
 import type { WordboxCard } from "./types";
 import { PronounceButton } from "./PronounceButton";
 
@@ -57,7 +59,9 @@ type PracticeSessionProps = {
   onExitLearning: () => void;
   hasAheadOfSchedule?: boolean;
   onEndEarlyControlsChange?: (controls: PracticeEndEarlyControls | null) => void;
+  onSessionComplete?: () => void;
   stats?: ReviewSessionStats;
+  questCompletedCount?: number;
 };
 
 export function PracticeSession({
@@ -69,7 +73,9 @@ export function PracticeSession({
   onExitLearning,
   hasAheadOfSchedule = false,
   onEndEarlyControlsChange,
+  onSessionComplete,
   stats,
+  questCompletedCount = 0,
 }: PracticeSessionProps) {
   const format = getPracticeFormat(formatId);
   const sessionKey = QUEST_SESSION_KEYS[formatId];
@@ -95,6 +101,7 @@ export function PracticeSession({
     buildDeck: (pool, options) => buildDeckForFormat(formatId, pool, options),
     onReviewGrade,
     onEndEarlyControlsChange,
+    onSessionComplete: isQuestFormat(formatId) ? onSessionComplete : undefined,
     initialFormatState: (deck) =>
       formatId === "review" ? { cardSides: assignPromptSides(deck) } : {},
     onFormatStateChange: (state) => {
@@ -647,6 +654,9 @@ export function PracticeSession({
             <p className="sessionSuccessScore">
               {knownWell.length} / {sessionDeck.length}
             </p>
+            {isQuestFormat(formatId) && questCompletedCount > 0 ? (
+              <p className="sessionStatsNote">{questsCompletedLabel(questCompletedCount)}</p>
+            ) : null}
             <p className="sessionSummaryLead">
               Every word in this session is marked ok. Nice work — head back to your cards
               whenever you like.
@@ -675,6 +685,9 @@ export function PracticeSession({
               {knownWell.length} ok · {needsWork.length} to improve
               {isEarlyExit ? ` · ${skippedCards.length} skipped` : ""}
             </p>
+            {isQuestFormat(formatId) && !isEarlyExit && questCompletedCount > 0 ? (
+              <p className="sessionStatsNote">{questsCompletedLabel(questCompletedCount)}</p>
+            ) : null}
 
             <div className={`sessionSummaryColumns${isEarlyExit ? " hasSkipped" : ""}`}>
               <section className="sessionSummaryBlock isOk" aria-label="Words you got right">

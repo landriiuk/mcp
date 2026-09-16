@@ -48,6 +48,7 @@ export const KNOWLEDGE_ARTICLES: KnowledgeArticle[] = [
       "Quest / Reverse / Typed use new and learning cards only, max 10, due first, then the rest. Known cards stay out of Quest. Reverse Quest needs at least 3 words.",
       "Again resets the streak immediately. Good or Easy adds 1 to the streak. After 3 correct in a row the card becomes Known. Review is flip plus Bad / Good / Easy for every word in the folder.",
       "Typed Quest does not auto-advance on a wrong answer. It shows the answer and waits for Continue.",
+      "Each finished Quest / Reverse / Typed session (N/N) adds one to the user’s quest count in the database. Ending early does not count.",
     ],
   },
   {

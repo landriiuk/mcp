@@ -8,6 +8,7 @@ import {
   query,
   where,
   writeBatch,
+  increment,
   Timestamp,
   type DocumentData,
 } from "firebase/firestore";
@@ -25,6 +26,7 @@ import {
   userFolderPath,
   userFoldersPath,
   userImportedSnapshotPath,
+  userPracticeStatsPath,
   userProfilePath,
   userProfilesPath,
   userPublishedSnapshotPath,
@@ -37,6 +39,7 @@ import {
   nextAvailableFolderName,
 } from "../lib/sharedSnapshots";
 import type { Card, CardStatus, Draft, Folder } from "../types/card";
+import { emptyPracticeStats, type PracticeStats } from "../types/practiceStats";
 import type {
   TeacherInvite,
   TeacherStudent,
@@ -97,6 +100,10 @@ function roleRef(uid: string) {
 
 function profileRef(uid: string) {
   return doc(getDb(), userProfilePath(uid));
+}
+
+function practiceStatsRef(uid: string) {
+  return doc(getDb(), userPracticeStatsPath(uid));
 }
 
 function inviteRef(inviteId: string) {
@@ -248,6 +255,40 @@ export async function ensureUserAccess(
     createdAt,
     updatedAt: stamp,
   };
+}
+
+function toPracticeStats(data: DocumentData | undefined): PracticeStats {
+  const count = Number(data?.quest_completed_count);
+  return {
+    questCompletedCount: Number.isFinite(count) && count > 0 ? Math.floor(count) : 0,
+    lastQuestCompletedAt:
+      typeof data?.last_quest_completed_at === "string"
+        ? data.last_quest_completed_at
+        : null,
+  };
+}
+
+export async function getPracticeStats(uid: string): Promise<PracticeStats> {
+  const snapshot = await getDoc(practiceStatsRef(uid));
+  if (!snapshot.exists()) {
+    return emptyPracticeStats();
+  }
+  return toPracticeStats(snapshot.data());
+}
+
+export async function recordQuestCompletion(uid: string): Promise<PracticeStats> {
+  const stamp = nowIso();
+  await setDoc(
+    practiceStatsRef(uid),
+    {
+      quest_completed_count: increment(1),
+      last_quest_completed_at: stamp,
+      updated_at: stamp,
+      schema_version: 1,
+    },
+    { merge: true },
+  );
+  return getPracticeStats(uid);
 }
 
 export async function getUserProfile(uid: string): Promise<UserProfile> {

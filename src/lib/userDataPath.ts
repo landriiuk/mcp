@@ -58,6 +58,10 @@ export function userImportedSnapshotPath(uid: string, shareId: string): string {
   return `${userImportedSnapshotsPath(uid)}/${requireShareId(shareId)}`;
 }
 
+export function userPracticeStatsPath(uid: string): string {
+  return `users/${requireUid(uid)}/stats/practice`;
+}
+
 export function rolePath(uid: string): string {
   return `roles/${requireUid(uid)}`;
 }

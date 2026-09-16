@@ -5,6 +5,7 @@ import {
   practiceFormatUnavailableHint,
 } from "../../lib/practiceFormats";
 import { CORRECT_STREAK_TO_KNOWN, MAX_SESSION_SIZE } from "../../utils/reviewAlgorithm";
+import { questsCompletedLabel } from "../../types/practiceStats";
 
 type LearningHubProps = {
   dueCount: number;
@@ -12,6 +13,7 @@ type LearningHubProps = {
   poolSize: number;
   folderWordCount: number;
   preferredMode: LearningMode;
+  questCompletedCount?: number;
   onStart: (mode: LearningMode) => void;
 };
 
@@ -21,6 +23,7 @@ export function LearningHub({
   poolSize,
   folderWordCount,
   preferredMode,
+  questCompletedCount = 0,
   onStart,
 }: LearningHubProps) {
   const questHint =
@@ -41,6 +44,7 @@ export function LearningHub({
         <p id="learning-hub-title" className="learningHubLead">
           Choose how you want to practice.
         </p>
+        <p className="learningHubStats">{questsCompletedLabel(questCompletedCount)}</p>
       </div>
 
       <div className="learningHubModes learningHubModesWide">

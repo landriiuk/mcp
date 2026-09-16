@@ -34,6 +34,8 @@ type PersistedPracticeSession = {
   endedEarly: boolean;
   skippedCards: WordboxCard[];
   formatState?: Record<string, unknown>;
+  /** True after a finished quest (N/N) has been counted in practice stats. */
+  statsRecorded?: boolean;
 };
 
 type BuildDeckFn = (
@@ -49,6 +51,8 @@ type UsePracticeSessionOptions = {
   buildDeck: BuildDeckFn;
   onReviewGrade: (cardId: string, grade: ReviewGrade) => void | Promise<void>;
   onEndEarlyControlsChange?: (controls: PracticeEndEarlyControls | null) => void;
+  /** Fires once when a session reaches N/N (not an early abort). */
+  onSessionComplete?: () => void;
   /** Extra snapshot fields (e.g. Review cardSides). */
   formatState?: Record<string, unknown>;
   onFormatStateChange?: (state: Record<string, unknown>) => void;
@@ -74,6 +78,7 @@ export function usePracticeSession({
   buildDeck,
   onReviewGrade,
   onEndEarlyControlsChange,
+  onSessionComplete,
   formatState,
   onFormatStateChange,
   initialFormatState,
@@ -105,8 +110,11 @@ export function usePracticeSession({
   const progressCurrentRef = useRef(0);
   const isGradingRef = useRef(false);
   const restoredRef = useRef(false);
+  const statsRecordedRef = useRef(false);
+  const onSessionCompleteRef = useRef(onSessionComplete);
   const formatStateRef = useRef<Record<string, unknown>>(formatState ?? {});
   const timeoutsRef = useRef<number[]>([]);
+  onSessionCompleteRef.current = onSessionComplete;
 
   const clearTimeouts = useCallback(() => {
     for (const id of timeoutsRef.current) {
@@ -149,6 +157,7 @@ export function usePracticeSession({
       endedEarly: overrides.endedEarly ?? endedEarly,
       skippedCards: overrides.skippedCards ?? skippedCards,
       formatState: overrides.formatState ?? formatStateRef.current,
+      statsRecorded: overrides.statsRecorded ?? statsRecordedRef.current,
     };
     memoryCache.set(sessionKey, snapshot);
     saveJsonSession(sessionKey, snapshot);
@@ -185,6 +194,7 @@ export function usePracticeSession({
     setSessionIndex(snapshot.sessionIndex);
     setEndedEarly(snapshot.endedEarly);
     setSkippedCards(snapshot.skippedCards);
+    statsRecordedRef.current = Boolean(snapshot.statsRecorded);
     isGradingRef.current = false;
     setIsGrading(false);
     setIsTransitioning(false);
@@ -230,6 +240,7 @@ export function usePracticeSession({
     setIsTransitioning(false);
     setEndedEarly(false);
     setSkippedCards([]);
+    statsRecordedRef.current = false;
     persistSnapshot({
       deck,
       queue: deck,
@@ -243,6 +254,7 @@ export function usePracticeSession({
       endedEarly: false,
       skippedCards: [],
       formatState: nextFormatState,
+      statsRecorded: false,
     });
   }
 
@@ -354,6 +366,19 @@ export function usePracticeSession({
     needsWork.length === 0 &&
     knownWell.length > 0 &&
     knownWell.length === sessionDeck.length;
+
+  useEffect(() => {
+    if (!isSessionComplete || statsRecordedRef.current) {
+      return;
+    }
+    const reachedBudget = progressTotal > 0 && progressCurrent >= progressTotal;
+    if (!reachedBudget) {
+      return;
+    }
+    statsRecordedRef.current = true;
+    persistSnapshot({ statsRecorded: true });
+    onSessionCompleteRef.current?.();
+  }, [isSessionComplete, progressCurrent, progressTotal]);
 
   function restartSession(shouldShuffle: boolean) {
     if (shouldShuffle) {

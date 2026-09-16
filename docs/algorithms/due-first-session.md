@@ -21,6 +21,7 @@ Implementation:
 - **All** folder: Start Learning opens a **folder picker** (modal). Direct `/learning` shows the same picker as page content. Learning always runs inside a concrete folder.
 - **Specific folder**: Start Learning → `/:encodedFolderId/learning` with **Learning Hub** as page content (practice formats), not a modal.
 - Preference for last mode: `localStorage` `inklex.learningMode` = `quest` | `quest-reverse` | `quest-typed` | `review`.
+- Quest completions (Quest / Reverse / Typed reaching **N/N**) increment `users/{uid}/stats/practice.quest_completed_count`. Ending early before N/N does not count. Review is not counted.
 
 ## Card buckets (Quest formats)
 

@@ -17,6 +17,7 @@ import type {
   SharedSnapshotVisibility,
   SharedSnapshotWord,
 } from "../types/sharedSnapshot";
+import { emptyPracticeStats, type PracticeStats } from "../types/practiceStats";
 import { reviewFieldsForStatus } from "../utils/reviewAlgorithm";
 
 const LEGACY_STORAGE_KEY = "inklex.mock.v1";
@@ -36,6 +37,7 @@ type MockState = {
     folderName: string;
     importedAt: string;
   }>;
+  practiceStats: PracticeStats;
 };
 
 type StoredSharedSnapshot = {
@@ -64,7 +66,12 @@ function createId() {
 }
 
 function emptyState(): MockState {
-  return { folders: [], words: [], importedSnapshots: [] };
+  return {
+    folders: [],
+    words: [],
+    importedSnapshots: [],
+    practiceStats: emptyPracticeStats(),
+  };
 }
 
 function readState(uid: string): MockState {
@@ -83,6 +90,7 @@ function readState(uid: string): MockState {
       importedSnapshots: Array.isArray(parsed.importedSnapshots)
         ? parsed.importedSnapshots
         : [],
+      practiceStats: normalizePracticeStats(parsed.practiceStats),
     };
   } catch {
     return emptyState();
@@ -94,6 +102,19 @@ function writeState(uid: string, state: MockState) {
   if (uid === "local-dev") {
     window.localStorage.removeItem(LEGACY_STORAGE_KEY);
   }
+}
+
+function normalizePracticeStats(value: unknown): PracticeStats {
+  if (!value || typeof value !== "object") {
+    return emptyPracticeStats();
+  }
+  const data = value as Partial<PracticeStats>;
+  const count = Number(data.questCompletedCount);
+  return {
+    questCompletedCount: Number.isFinite(count) && count > 0 ? Math.floor(count) : 0,
+    lastQuestCompletedAt:
+      typeof data.lastQuestCompletedAt === "string" ? data.lastQuestCompletedAt : null,
+  };
 }
 
 function mutate(uid: string, updater: (state: MockState) => void) {
@@ -169,6 +190,22 @@ export async function ensureUserAccess(
     current.profiles.push(profile);
   });
   return profile;
+}
+
+export async function getPracticeStats(uid: string): Promise<PracticeStats> {
+  return normalizePracticeStats(readState(uid).practiceStats);
+}
+
+export async function recordQuestCompletion(uid: string): Promise<PracticeStats> {
+  const stamp = nowIso();
+  const state = mutate(uid, (current) => {
+    const currentCount = normalizePracticeStats(current.practiceStats).questCompletedCount;
+    current.practiceStats = {
+      questCompletedCount: currentCount + 1,
+      lastQuestCompletedAt: stamp,
+    };
+  });
+  return normalizePracticeStats(state.practiceStats);
 }
 
 export async function getUserProfile(uid: string): Promise<UserProfile> {
