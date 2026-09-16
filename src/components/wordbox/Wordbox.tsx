@@ -436,7 +436,15 @@ export function Wordbox({
                 }}
                 onDragEnd={() => setDraggingCardId(null)}
               >
-                <div className="wordboxCardPronounce">
+                <div
+                  className="wordboxCardPronounce"
+                  draggable={false}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onDragStart={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }}
+                >
                   <PronounceButton word={word.word} compact />
                 </div>
                 <Card
