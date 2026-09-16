@@ -1,3 +1,6 @@
 {
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    { "source": "/inklex-pronounce", "destination": "/api/pronounce" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ]
 }
